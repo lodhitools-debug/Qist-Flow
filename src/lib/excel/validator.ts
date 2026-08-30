@@ -92,7 +92,7 @@ export function validateImportRows(
     missingDueDates,
     missingEmi,
     errors: errorsList,
-    previewRows: parsedRecords.slice(0, 50),
+    previewRows: parsedRecords,
   };
 }
 

@@ -14,6 +14,12 @@ import {
   RefreshCw,
   Sliders,
   Table,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Filter,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -33,6 +39,12 @@ export default function ExcelImportPage() {
   // Validation response
   const [validationSummary, setValidationSummary] = useState<any>(null);
   const [validating, setValidating] = useState(false);
+
+  // Preview Pagination & Filter state
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [filterValidity, setFilterValidity] = useState<"ALL" | "VALID" | "INVALID">("ALL");
 
   // Process response
   const [processing, setProcessing] = useState(false);
@@ -415,63 +427,286 @@ export default function ExcelImportPage() {
             </div>
           )}
 
-          {/* Parsed Rows Preview Table */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                Pre-Import Inspection (First {validationSummary.previewRows?.length || 0} Rows)
-              </h3>
-            </div>
+          {/* Filter and Pagination Computations */}
+          {(() => {
+            const filteredRows = (validationSummary?.previewRows || []).filter((r: any) => {
+              const matchesSearch =
+                searchQuery.trim() === "" ||
+                r.account?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                r.customerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                r.primaryPhone?.includes(searchQuery);
 
-            <div className="overflow-x-auto max-h-96">
-              <table className="w-full text-left text-xs">
-                <thead className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 text-slate-400 font-semibold uppercase text-[10px] sticky top-0">
-                  <tr>
-                    <th className="py-2.5 px-3">Row</th>
-                    <th className="py-2.5 px-3">Account</th>
-                    <th className="py-2.5 px-3">Customer Name</th>
-                    <th className="py-2.5 px-3">Clean Phone</th>
-                    <th className="py-2.5 px-3">Product</th>
-                    <th className="py-2.5 px-3">EMI</th>
-                    <th className="py-2.5 px-3">Balance</th>
-                    <th className="py-2.5 px-3">Due Date</th>
-                    <th className="py-2.5 px-3">Validity</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                  {validationSummary.previewRows.map((r: any) => (
-                    <tr key={r.rowNumber} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                      <td className="py-2.5 px-3 font-mono text-slate-400">#{r.rowNumber}</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-900 dark:text-white">
-                        {r.account}
-                      </td>
-                      <td className="py-2.5 px-3 font-semibold">{r.customerName}</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-slate-300">
-                        {r.primaryPhone}
-                      </td>
-                      <td className="py-2.5 px-3 truncate max-w-[150px]">{r.productName || "—"}</td>
-                      <td className="py-2.5 px-3 font-bold">Rs. {r.emi}</td>
-                      <td className="py-2.5 px-3 font-bold text-rose-600">Rs. {r.balance}</td>
-                      <td className="py-2.5 px-3">
-                        {r.dueDate ? new Date(r.dueDate).toISOString().split("T")[0] : "Invalid"}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        {r.isValid ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">
-                            Valid
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700">
-                            Invalid
-                          </span>
+              const matchesValidity =
+                filterValidity === "ALL" ||
+                (filterValidity === "VALID" && r.isValid) ||
+                (filterValidity === "INVALID" && !r.isValid);
+
+              return matchesSearch && matchesValidity;
+            });
+
+            const totalFiltered = filteredRows.length;
+            const totalPages = pageSize === -1 ? 1 : Math.ceil(totalFiltered / pageSize) || 1;
+            const effectivePage = Math.min(Math.max(currentPage, 1), totalPages);
+
+            const paginatedRows =
+              pageSize === -1
+                ? filteredRows
+                : filteredRows.slice((effectivePage - 1) * pageSize, effectivePage * pageSize);
+
+            const startRow =
+              totalFiltered === 0
+                ? 0
+                : (effectivePage - 1) * (pageSize === -1 ? totalFiltered : pageSize) + 1;
+            const endRow = pageSize === -1 ? totalFiltered : Math.min(effectivePage * pageSize, totalFiltered);
+
+            return (
+              <div className="space-y-4">
+                {/* Parsed Rows Preview Table */}
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                  {/* Header Toolbar */}
+                  <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                        <Table className="w-4 h-4 text-emerald-500" />
+                        <span>
+                          Pre-Import Inspection ({totalFiltered} of {validationSummary.totalRows} Records)
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Browse all {validationSummary.totalRows} rows before final database commit.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      {/* Search Box */}
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="Search account, name, phone..."
+                          value={searchQuery}
+                          onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          className="pl-8 pr-3 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 w-48 sm:w-60"
+                        />
+                      </div>
+
+                      {/* Validity Filter */}
+                      <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 p-0.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-semibold">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFilterValidity("ALL");
+                            setCurrentPage(1);
+                          }}
+                          className={clsx(
+                            "px-2.5 py-1 rounded-md transition-colors",
+                            filterValidity === "ALL"
+                              ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
+                              : "text-slate-500 hover:text-slate-800"
+                          )}
+                        >
+                          All ({validationSummary.totalRows})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFilterValidity("VALID");
+                            setCurrentPage(1);
+                          }}
+                          className={clsx(
+                            "px-2.5 py-1 rounded-md transition-colors",
+                            filterValidity === "VALID"
+                              ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
+                              : "text-slate-500 hover:text-slate-800"
+                          )}
+                        >
+                          Valid ({validationSummary.validRows})
+                        </button>
+                        {validationSummary.invalidRows > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFilterValidity("INVALID");
+                              setCurrentPage(1);
+                            }}
+                            className={clsx(
+                              "px-2.5 py-1 rounded-md transition-colors",
+                              filterValidity === "INVALID"
+                                ? "bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-sm"
+                                : "text-slate-500 hover:text-slate-800"
+                            )}
+                          >
+                            Invalid ({validationSummary.invalidRows})
+                          </button>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                      </div>
+
+                      {/* Rows per page Selector */}
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                        <span>Rows:</span>
+                        <select
+                          value={pageSize}
+                          onChange={(e) => {
+                            setPageSize(Number(e.target.value));
+                            setCurrentPage(1);
+                          }}
+                          className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                        >
+                          <option value={25}>25</option>
+                          <option value={50}>50</option>
+                          <option value={100}>100</option>
+                          <option value={-1}>All ({validationSummary.totalRows})</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Table */}
+                  <div className="overflow-x-auto max-h-[500px]">
+                    <table className="w-full text-left text-xs">
+                      <thead className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-semibold uppercase text-[10px] sticky top-0 backdrop-blur-sm z-10">
+                        <tr>
+                          <th className="py-2.5 px-3">#</th>
+                          <th className="py-2.5 px-3">Account</th>
+                          <th className="py-2.5 px-3">Customer Name</th>
+                          <th className="py-2.5 px-3">Clean Phone</th>
+                          <th className="py-2.5 px-3">Product</th>
+                          <th className="py-2.5 px-3">EMI</th>
+                          <th className="py-2.5 px-3">Balance</th>
+                          <th className="py-2.5 px-3">Due Date</th>
+                          <th className="py-2.5 px-3">Account Type</th>
+                          <th className="py-2.5 px-3 text-right">Validity</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
+                        {paginatedRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={10} className="py-8 text-center text-slate-400 text-xs">
+                              No customer records match the selected filter or search query.
+                            </td>
+                          </tr>
+                        ) : (
+                          paginatedRows.map((r: any) => (
+                            <tr
+                              key={r.rowNumber}
+                              className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                            >
+                              <td className="py-2.5 px-3 font-mono text-slate-400 text-[11px]">#{r.rowNumber}</td>
+                              <td className="py-2.5 px-3 font-mono font-bold text-slate-900 dark:text-white">
+                                {r.account}
+                              </td>
+                              <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                                {r.customerName}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-slate-300">
+                                {r.primaryPhone}
+                              </td>
+                              <td className="py-2.5 px-3 truncate max-w-[160px] text-slate-600 dark:text-slate-300">
+                                {r.productName || "—"}
+                              </td>
+                              <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">Rs. {r.emi}</td>
+                              <td className="py-2.5 px-3 font-bold text-rose-600 dark:text-rose-400">
+                                Rs. {r.balance}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-slate-300">
+                                {r.dueDate ? new Date(r.dueDate).toISOString().split("T")[0] : "Invalid"}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                {r.isExisting ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                    Existing
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                    New
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                {r.isValid ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span>Valid</span>
+                                  </span>
+                                ) : (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                                    title={r.errors?.join(", ")}
+                                  >
+                                    <AlertTriangle className="w-3 h-3" />
+                                    <span>Invalid</span>
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination Controls Bar */}
+                  <div className="p-3.5 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900 text-xs">
+                    <div className="text-slate-500 dark:text-slate-400 text-xs">
+                      Showing <strong className="text-slate-900 dark:text-white">{startRow}</strong> to{" "}
+                      <strong className="text-slate-900 dark:text-white">{endRow}</strong> of{" "}
+                      <strong className="text-slate-900 dark:text-white">{totalFiltered}</strong> rows
+                      {searchQuery && ` (filtered from ${validationSummary.totalRows} total)`}
+                    </div>
+
+                    {totalPages > 1 && (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={effectivePage === 1}
+                          onClick={() => setCurrentPage(1)}
+                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                          title="First Page"
+                        >
+                          <ChevronsLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={effectivePage === 1}
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                          title="Previous Page"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+
+                        <span className="px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300">
+                          Page {effectivePage} of {totalPages}
+                        </span>
+
+                        <button
+                          type="button"
+                          disabled={effectivePage === totalPages}
+                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                          title="Next Page"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={effectivePage === totalPages}
+                          onClick={() => setCurrentPage(totalPages)}
+                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                          title="Last Page"
+                        >
+                          <ChevronsRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Action Bar */}
           <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800">
@@ -493,7 +728,7 @@ export default function ExcelImportPage() {
               ) : (
                 <CheckCircle2 className="w-4 h-4" />
               )}
-              <span>Confirm & Import {validationSummary.validRows} Records</span>
+              <span>Confirm & Import All {validationSummary.validRows} Records</span>
             </button>
           </div>
         </div>
