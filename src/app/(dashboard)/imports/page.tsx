@@ -20,7 +20,6 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Filter,
   Eye,
   X,
   User,
@@ -30,6 +29,7 @@ import {
   Users,
   Check,
   Calendar,
+  Layers,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -90,9 +90,9 @@ const ALL_COLUMNS: ColumnDef[] = [
     key: "address",
     label: "Address",
     category: "Identity",
-    minWidth: "190px",
+    minWidth: "200px",
     render: (r) => (
-      <span className="truncate max-w-[180px] block text-slate-600 dark:text-slate-400" title={r.address}>
+      <span className="truncate max-w-[190px] block text-slate-600 dark:text-slate-400" title={r.address}>
         {r.address || "—"}
       </span>
     ),
@@ -189,7 +189,7 @@ const ALL_COLUMNS: ColumnDef[] = [
     category: "Dates",
     minWidth: "120px",
     render: (r) => (
-      <span className="font-mono text-slate-700 dark:text-slate-300">
+      <span className="font-mono text-slate-700 dark:text-slate-300 font-semibold">
         {r.dueDate ? new Date(r.dueDate).toISOString().split("T")[0] : "Invalid"}
       </span>
     ),
@@ -403,12 +403,12 @@ export default function ExcelImportPage() {
   const [validating, setValidating] = useState(false);
 
   // Preview Pagination & Filter state
-  const [pageSize, setPageSize] = useState<number>(50); // Default 50 per requirement
+  const [pageSize, setPageSize] = useState<number>(25);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [filterValidity, setFilterValidity] = useState<"ALL" | "VALID" | "INVALID">("ALL");
 
-  // Column Selector state (All visible by default)
+  // Column Selector state (All 30 visible by default)
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(ALL_COLUMN_KEYS));
   const [showColumnSelector, setShowColumnSelector] = useState(false);
 
@@ -555,6 +555,11 @@ export default function ExcelImportPage() {
 
   const selectAllColumns = () => {
     setVisibleColumns(new Set(ALL_COLUMN_KEYS));
+  };
+
+  const deselectAllColumns = () => {
+    // Keep at least Account & Customer
+    setVisibleColumns(new Set(["account", "customerName"]));
   };
 
   const resetDefaultColumns = () => {
@@ -765,45 +770,45 @@ export default function ExcelImportPage() {
       {step === 3 && validationSummary && (
         <div className="space-y-6 animate-in fade-in">
           {/* Summary Metric Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Rows</span>
               <span className="text-xl font-extrabold text-slate-900 dark:text-white mt-1 block">
                 {validationSummary.totalRows}
               </span>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
-              <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Columns</span>
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-indigo-100 dark:border-indigo-900/50 shadow-sm">
+              <span className="text-[10px] uppercase font-bold text-indigo-500 block">Total Columns</span>
               <span className="text-xl font-extrabold text-indigo-600 dark:text-indigo-400 mt-1 block">
                 {validationSummary.totalColumns || 31}
               </span>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-900">
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-900 shadow-sm">
               <span className="text-[10px] uppercase font-bold text-emerald-600 block">Valid Rows</span>
               <span className="text-xl font-extrabold text-emerald-600 mt-1 block">
                 {validationSummary.validRows}
               </span>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Invalid Rows</span>
-              <span className="text-xl font-extrabold text-slate-800 dark:text-slate-200 mt-1 block">
+              <span className="text-xl font-extrabold text-slate-700 dark:text-slate-300 mt-1 block">
                 {validationSummary.invalidRows}
               </span>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Duplicates</span>
-              <span className="text-xl font-extrabold text-slate-800 dark:text-slate-200 mt-1 block">
+              <span className="text-xl font-extrabold text-slate-700 dark:text-slate-300 mt-1 block">
                 {validationSummary.duplicateRecords}
               </span>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+            <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Missing Data</span>
-              <span className="text-xl font-extrabold text-slate-800 dark:text-slate-200 mt-1 block">
+              <span className="text-xl font-extrabold text-slate-700 dark:text-slate-300 mt-1 block">
                 {validationSummary.missingDueDates + validationSummary.missingCustomerNames}
               </span>
             </div>
@@ -831,19 +836,33 @@ export default function ExcelImportPage() {
           {/* Filter and Pagination Computations */}
           {(() => {
             const filteredRows = (validationSummary?.previewRows || []).filter((r: any) => {
-              const matchesSearch =
-                searchQuery.trim() === "" ||
-                r.account?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                r.customerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                r.primaryPhone?.includes(searchQuery) ||
-                r.productName?.toLowerCase().includes(searchQuery.toLowerCase());
+              if (searchQuery.trim() !== "") {
+                const q = searchQuery.toLowerCase();
+                const matchesAnyField =
+                  r.account?.toLowerCase().includes(q) ||
+                  r.customerName?.toLowerCase().includes(q) ||
+                  r.primaryPhone?.includes(q) ||
+                  r.secondaryPhone?.includes(q) ||
+                  r.address?.toLowerCase().includes(q) ||
+                  r.cnic?.includes(q) ||
+                  r.webNo?.toLowerCase().includes(q) ||
+                  r.productName?.toLowerCase().includes(q) ||
+                  r.brand?.toLowerCase().includes(q) ||
+                  r.imei1?.toLowerCase().includes(q) ||
+                  r.imei2?.toLowerCase().includes(q) ||
+                  r.salesPerson?.toLowerCase().includes(q) ||
+                  r.recoveryPerson?.toLowerCase().includes(q) ||
+                  r.omsRecoveryPerson?.toLowerCase().includes(q) ||
+                  r.guarantor1Name?.toLowerCase().includes(q) ||
+                  r.guarantor2Name?.toLowerCase().includes(q);
 
-              const matchesValidity =
-                filterValidity === "ALL" ||
-                (filterValidity === "VALID" && r.isValid) ||
-                (filterValidity === "INVALID" && !r.isValid);
+                if (!matchesAnyField) return false;
+              }
 
-              return matchesSearch && matchesValidity;
+              if (filterValidity === "VALID" && !r.isValid) return false;
+              if (filterValidity === "INVALID" && r.isValid) return false;
+
+              return true;
             });
 
             const totalFiltered = filteredRows.length;
@@ -866,40 +885,53 @@ export default function ExcelImportPage() {
 
             return (
               <div className="space-y-4">
-                {/* Parsed Rows Preview Table */}
+                {/* Main Card Container */}
                 <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-                  {/* Header Toolbar */}
-                  <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  {/* Top Bar: Title & Status Banner */}
+                  <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div>
                       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
                         <Table className="w-4 h-4 text-emerald-500" />
-                        <span>
-                          Pre-Import Inspection ({totalFiltered} of {validationSummary.totalRows} Records, {activeColumns.length} Columns Active)
-                        </span>
+                        <span>PRE-IMPORT INSPECTION ({totalFiltered} OF {validationSummary.totalRows} RECORDS)</span>
                       </h3>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Scroll horizontally to inspect all 31 columns or click &quot;View Row&quot; for complete field details.
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                          Showing {startRow}–{endRow} of {totalFiltered} rows
+                        </span>
+                        <span>•</span>
+                        <span className="text-indigo-600 dark:text-indigo-400 font-semibold">
+                          30 mapped columns
+                        </span>
+                        <span>•</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                          {validationSummary.validRows} valid rows
+                        </span>
+                        <span>•</span>
+                        <span className="text-slate-500 font-semibold">
+                          {validationSummary.invalidRows} invalid rows
+                        </span>
+                      </div>
                     </div>
 
+                    {/* Toolbar Controls */}
                     <div className="flex flex-wrap items-center gap-2.5">
                       {/* Search Box */}
                       <div className="relative">
                         <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
-                          placeholder="Search account, name, phone..."
+                          placeholder="Search any field..."
                           value={searchQuery}
                           onChange={(e) => {
                             setSearchQuery(e.target.value);
                             setCurrentPage(1);
                           }}
-                          className="pl-8 pr-3 py-1.5 rounded-lg text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 w-44 sm:w-56"
+                          className="pl-8 pr-3 py-1.5 rounded-lg text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 w-40 sm:w-52 shadow-sm"
                         />
                       </div>
 
                       {/* Validity Filter */}
-                      <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 p-0.5 bg-slate-50 dark:bg-slate-800 text-[11px] font-semibold">
+                      <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 p-0.5 bg-white dark:bg-slate-800 text-[11px] font-semibold shadow-sm">
                         <button
                           type="button"
                           onClick={() => {
@@ -909,7 +941,7 @@ export default function ExcelImportPage() {
                           className={clsx(
                             "px-2.5 py-1 rounded-md transition-colors",
                             filterValidity === "ALL"
-                              ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
+                              ? "bg-slate-100 dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 font-bold"
                               : "text-slate-500 hover:text-slate-800"
                           )}
                         >
@@ -924,87 +956,12 @@ export default function ExcelImportPage() {
                           className={clsx(
                             "px-2.5 py-1 rounded-md transition-colors",
                             filterValidity === "VALID"
-                              ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
+                              ? "bg-slate-100 dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 font-bold"
                               : "text-slate-500 hover:text-slate-800"
                           )}
                         >
                           Valid ({validationSummary.validRows})
                         </button>
-                      </div>
-
-                      {/* Column Selector Toggle Button */}
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setShowColumnSelector(!showColumnSelector)}
-                          className={clsx(
-                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors",
-                            showColumnSelector
-                              ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-700 dark:text-emerald-300"
-                              : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100"
-                          )}
-                        >
-                          <SlidersHorizontal className="w-3.5 h-3.5" />
-                          <span>Columns ({activeColumns.length}/{ALL_COLUMNS.length})</span>
-                        </button>
-
-                        {/* Column Selector Dropdown */}
-                        {showColumnSelector && (
-                          <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in zoom-in-95">
-                            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800">
-                              <span className="text-xs font-bold text-slate-900 dark:text-white">
-                                Show / Hide Columns
-                              </span>
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={selectAllColumns}
-                                  className="text-[10px] font-bold text-emerald-600 hover:underline"
-                                >
-                                  Select All
-                                </button>
-                                <span className="text-slate-300 dark:text-slate-700">|</span>
-                                <button
-                                  type="button"
-                                  onClick={resetDefaultColumns}
-                                  className="text-[10px] font-bold text-slate-500 hover:underline"
-                                >
-                                  Reset
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60 my-2 pr-1">
-                              {ALL_COLUMNS.map((col) => {
-                                const isChecked = visibleColumns.has(col.key);
-                                return (
-                                  <label
-                                    key={col.key}
-                                    className="flex items-center justify-between py-1.5 px-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg cursor-pointer text-xs"
-                                  >
-                                    <span className="text-slate-700 dark:text-slate-300 font-medium">
-                                      {col.label}
-                                    </span>
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={() => toggleColumn(col.key)}
-                                      className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                                    />
-                                  </label>
-                                );
-                              })}
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => setShowColumnSelector(false)}
-                              className="w-full py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-lg hover:bg-slate-200 transition-colors"
-                            >
-                              Done
-                            </button>
-                          </div>
-                        )}
                       </div>
 
                       {/* Rows per page Selector */}
@@ -1016,47 +973,171 @@ export default function ExcelImportPage() {
                             setPageSize(Number(e.target.value));
                             setCurrentPage(1);
                           }}
-                          className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                          className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-sm"
                         >
-                          <option value={25}>25 rows</option>
-                          <option value={50}>50 rows (Default)</option>
-                          <option value={100}>100 rows</option>
+                          <option value={25}>25</option>
+                          <option value={50}>50</option>
+                          <option value={100}>100</option>
                           <option value={-1}>All ({validationSummary.totalRows})</option>
                         </select>
+                      </div>
+
+                      {/* Prominent Columns Selector Button */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setShowColumnSelector(!showColumnSelector)}
+                          className={clsx(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm transition-all",
+                            showColumnSelector
+                              ? "bg-emerald-600 text-white border-emerald-600"
+                              : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:border-emerald-500 hover:text-emerald-600"
+                          )}
+                        >
+                          <SlidersHorizontal className="w-3.5 h-3.5" />
+                          <span>Columns ({activeColumns.length}/{ALL_COLUMNS.length})</span>
+                        </button>
+
+                        {/* Column Selector Dropdown Menu */}
+                        {showColumnSelector && (
+                          <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-4 z-50 animate-in fade-in zoom-in-95">
+                            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                              <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                <Layers className="w-3.5 h-3.5 text-emerald-500" />
+                                <span>Show / Hide Columns</span>
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={selectAllColumns}
+                                  className="text-[10px] font-bold text-emerald-600 hover:underline"
+                                >
+                                  Select All
+                                </button>
+                                <span className="text-slate-300 dark:text-slate-700">|</span>
+                                <button
+                                  type="button"
+                                  onClick={deselectAllColumns}
+                                  className="text-[10px] font-bold text-slate-400 hover:underline"
+                                >
+                                  Deselect All
+                                </button>
+                                <span className="text-slate-300 dark:text-slate-700">|</span>
+                                <button
+                                  type="button"
+                                  onClick={resetDefaultColumns}
+                                  className="text-[10px] font-bold text-indigo-600 hover:underline"
+                                >
+                                  Reset
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60 my-2 pr-1">
+                              {ALL_COLUMNS.map((col) => {
+                                const isChecked = visibleColumns.has(col.key);
+                                return (
+                                  <label
+                                    key={col.key}
+                                    className="flex items-center justify-between py-1.5 px-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg cursor-pointer text-xs"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-400">
+                                        {col.category}
+                                      </span>
+                                      <span className="text-slate-700 dark:text-slate-300 font-medium">
+                                        {col.label}
+                                      </span>
+                                    </div>
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => toggleColumn(col.key)}
+                                      className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                                    />
+                                  </label>
+                                );
+                              })}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setShowColumnSelector(false)}
+                              className="w-full py-1.5 bg-slate-900 dark:bg-slate-800 text-white text-xs font-bold rounded-lg hover:bg-slate-800 transition-colors shadow-sm"
+                            >
+                              Apply Columns ({activeColumns.length} Active)
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Horizontal Scrolling Table with All Columns */}
-                  <div className="overflow-x-auto max-h-[550px]">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-semibold uppercase text-[10px] sticky top-0 backdrop-blur-sm z-20">
+                  {/* Horizontal Scroll Guidance Banner */}
+                  <div className="px-4 py-2 bg-emerald-50/50 dark:bg-emerald-950/20 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>
+                        Horizontal Scrolling Active — Scroll right → to inspect all 30 Excel data columns (or click <strong>Inspect</strong> on any row).
+                      </span>
+                    </div>
+                    <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded-full font-bold">
+                      {activeColumns.length} Columns Visible
+                    </span>
+                  </div>
+
+                  {/* Table with Horizontal Scrollbar */}
+                  <div className="overflow-x-auto max-h-[580px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
+                    <table className="w-full text-left text-xs border-collapse min-w-[3400px]">
+                      <thead className="border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/90 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10px] sticky top-0 backdrop-blur-sm z-30">
                         <tr>
-                          <th className="py-2.5 px-3 sticky left-0 bg-slate-50 dark:bg-slate-800 z-30 shadow-sm min-w-[50px]">
+                          {/* Sticky Column 1: Row # */}
+                          <th className="py-3 px-3 sticky left-0 bg-slate-100 dark:bg-slate-800 z-40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-[48px] min-w-[48px]">
                             #
                           </th>
-                          <th className="py-2.5 px-3 min-w-[90px] text-center">
-                            Actions
+
+                          {/* Sticky Column 2: Inspect Action */}
+                          <th className="py-3 px-3 sticky left-[48px] bg-slate-100 dark:bg-slate-800 z-40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-[85px] min-w-[85px] text-center">
+                            Inspect
                           </th>
-                          {activeColumns.map((col) => (
-                            <th
-                              key={col.key}
-                              style={{ minWidth: col.minWidth }}
-                              className="py-2.5 px-3"
-                            >
-                              {col.label}
-                            </th>
-                          ))}
-                          <th className="py-2.5 px-3 min-w-[100px]">Account Type</th>
-                          <th className="py-2.5 px-3 min-w-[90px] text-right">Validity</th>
+
+                          {/* Sticky Column 3: Account */}
+                          <th className="py-3 px-3 sticky left-[133px] bg-slate-100 dark:bg-slate-800 z-40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-[120px] min-w-[120px]">
+                            Account
+                          </th>
+
+                          {/* Sticky Column 4: Customer Name */}
+                          <th className="py-3 px-3 sticky left-[253px] bg-slate-100 dark:bg-slate-800 z-40 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.15)] w-[160px] min-w-[160px]">
+                            Customer
+                          </th>
+
+                          {/* Remaining Columns */}
+                          {activeColumns
+                            .filter((c) => c.key !== "account" && c.key !== "customerName")
+                            .map((col) => (
+                              <th
+                                key={col.key}
+                                style={{ minWidth: col.minWidth }}
+                                className="py-3 px-3 border-l border-slate-200/50 dark:border-slate-800/50"
+                              >
+                                {col.label}
+                              </th>
+                            ))}
+                          <th className="py-3 px-3 min-w-[100px] border-l border-slate-200/50 dark:border-slate-800/50">
+                            Account Type
+                          </th>
+                          <th className="py-3 px-3 min-w-[90px] text-right border-l border-slate-200/50 dark:border-slate-800/50">
+                            Validity
+                          </th>
                         </tr>
                       </thead>
+
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
                         {paginatedRows.length === 0 ? (
                           <tr>
                             <td
                               colSpan={activeColumns.length + 4}
-                              className="py-8 text-center text-slate-400 text-xs"
+                              className="py-12 text-center text-slate-400 text-xs"
                             >
                               No customer records match the selected filter or search query.
                             </td>
@@ -1067,14 +1148,17 @@ export default function ExcelImportPage() {
                               key={r.rowNumber}
                               className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group"
                             >
-                              <td className="py-2.5 px-3 font-mono text-slate-400 text-[11px] sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/40 z-10">
+                              {/* Sticky Column 1: Row # */}
+                              <td className="py-2.5 px-3 font-mono text-slate-400 text-[11px] sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/60 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] w-[48px] min-w-[48px]">
                                 #{r.rowNumber}
                               </td>
-                              <td className="py-2.5 px-3 text-center">
+
+                              {/* Sticky Column 2: Inspect Action */}
+                              <td className="py-2.5 px-3 text-center sticky left-[48px] bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/60 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] w-[85px] min-w-[85px]">
                                 <button
                                   type="button"
                                   onClick={() => setSelectedRecord(r)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 text-[11px] font-bold border border-emerald-200 dark:border-emerald-800 transition-all"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 text-[11px] font-bold border border-emerald-200 dark:border-emerald-800 transition-all shadow-sm"
                                   title="View Full Row (All 31 Fields)"
                                 >
                                   <Eye className="w-3 h-3" />
@@ -1082,13 +1166,29 @@ export default function ExcelImportPage() {
                                 </button>
                               </td>
 
-                              {activeColumns.map((col) => (
-                                <td key={col.key} className="py-2.5 px-3">
-                                  {col.render(r)}
-                                </td>
-                              ))}
+                              {/* Sticky Column 3: Account */}
+                              <td className="py-2.5 px-3 font-mono font-bold text-slate-900 dark:text-white sticky left-[133px] bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/60 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] w-[120px] min-w-[120px]">
+                                {r.account}
+                              </td>
 
-                              <td className="py-2.5 px-3">
+                              {/* Sticky Column 4: Customer Name */}
+                              <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200 sticky left-[253px] bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/60 z-20 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.1)] w-[160px] min-w-[160px]">
+                                {r.customerName}
+                              </td>
+
+                              {/* Remaining Columns */}
+                              {activeColumns
+                                .filter((c) => c.key !== "account" && c.key !== "customerName")
+                                .map((col) => (
+                                  <td
+                                    key={col.key}
+                                    className="py-2.5 px-3 border-l border-slate-100 dark:border-slate-800/50"
+                                  >
+                                    {col.render(r)}
+                                  </td>
+                                ))}
+
+                              <td className="py-2.5 px-3 border-l border-slate-100 dark:border-slate-800/50">
                                 {r.isExisting ? (
                                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                                     Existing
@@ -1100,7 +1200,7 @@ export default function ExcelImportPage() {
                                 )}
                               </td>
 
-                              <td className="py-2.5 px-3 text-right">
+                              <td className="py-2.5 px-3 text-right border-l border-slate-100 dark:border-slate-800/50">
                                 {r.isValid ? (
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                                     <CheckCircle2 className="w-3 h-3" />
@@ -1137,7 +1237,7 @@ export default function ExcelImportPage() {
                           type="button"
                           disabled={effectivePage === 1}
                           onClick={() => setCurrentPage(1)}
-                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shadow-sm"
                           title="First Page"
                         >
                           <ChevronsLeft className="w-4 h-4" />
@@ -1146,13 +1246,13 @@ export default function ExcelImportPage() {
                           type="button"
                           disabled={effectivePage === 1}
                           onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shadow-sm"
                           title="Previous Page"
                         >
                           <ChevronLeft className="w-4 h-4" />
                         </button>
 
-                        <span className="px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300">
+                        <span className="px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm">
                           Page {effectivePage} of {totalPages}
                         </span>
 
@@ -1160,7 +1260,7 @@ export default function ExcelImportPage() {
                           type="button"
                           disabled={effectivePage === totalPages}
                           onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shadow-sm"
                           title="Next Page"
                         >
                           <ChevronRight className="w-4 h-4" />
@@ -1169,7 +1269,7 @@ export default function ExcelImportPage() {
                           type="button"
                           disabled={effectivePage === totalPages}
                           onClick={() => setCurrentPage(totalPages)}
-                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                          className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shadow-sm"
                           title="Last Page"
                         >
                           <ChevronsRight className="w-4 h-4" />
@@ -1475,7 +1575,7 @@ export default function ExcelImportPage() {
               <button
                 type="button"
                 onClick={() => setSelectedRecord(null)}
-                className="px-5 py-2 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors"
+                className="px-5 py-2 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors shadow-sm"
               >
                 Close Inspection
               </button>
