@@ -310,7 +310,7 @@ export default function CustomersPage() {
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => openSendModal(cust)}
+                            onClick={() => handleOpenMessageModal(cust)}
                             title="Send WhatsApp Reminder"
                             className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 transition-colors"
                           >
