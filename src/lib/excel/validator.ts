@@ -79,9 +79,11 @@ export function validateImportRows(
 
   const validRows = parsedRecords.filter((r) => r.isValid).length;
   const invalidRows = parsedRecords.length - validRows;
+  const totalColumns = Object.values(mapping).filter(Boolean).length || 31;
 
   return {
     totalRows: parsedRecords.length,
+    totalColumns,
     validRows,
     invalidRows,
     newCustomers,

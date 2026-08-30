@@ -76,6 +76,7 @@ export interface ParsedCustomerRecord {
 
 export interface ImportValidationSummary {
   totalRows: number;
+  totalColumns: number;
   validRows: number;
   invalidRows: number;
   newCustomers: number;
