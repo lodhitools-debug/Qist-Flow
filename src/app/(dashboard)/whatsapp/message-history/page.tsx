@@ -17,6 +17,18 @@ import {
 import clsx from "clsx";
 import { formatDisplayPhone } from "@/lib/excel/mapper";
 
+async function safeJsonParse(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      success: false,
+      error: `Server HTTP ${res.status}: ${text.slice(0, 200)}`,
+    };
+  }
+}
+
 export default function MessageHistoryPage() {
   const [view, setView] = useState<"HISTORY" | "QUEUE">("HISTORY");
   const [logs, setLogs] = useState<any[]>([]);
@@ -38,9 +50,9 @@ export default function MessageHistoryPage() {
       });
 
       const res = await fetch(`/api/whatsapp/history?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setLogs(data.logs || []);
+      const data = await safeJsonParse(res);
+      if (res.ok && data.logs) {
+        setLogs(data.logs);
       }
     } catch (err) {
       console.error("Failed to load message history", err);
@@ -53,9 +65,9 @@ export default function MessageHistoryPage() {
     try {
       setLoading(true);
       const res = await fetch("/api/whatsapp/queue?limit=50");
-      if (res.ok) {
-        const data = await res.json();
-        setQueueItems(data.items || []);
+      const data = await safeJsonParse(res);
+      if (res.ok && data.items) {
+        setQueueItems(data.items);
         setStats(data.stats);
       }
     } catch (err) {

@@ -27,6 +27,18 @@ import clsx from "clsx";
 import { getStatusBadgeConfig } from "@/lib/installment-engine";
 import { formatDisplayPhone } from "@/lib/excel/mapper";
 
+async function safeJsonParse(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      success: false,
+      error: `Server HTTP ${res.status}: ${text.slice(0, 200)}`,
+    };
+  }
+}
+
 export default function CustomerDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -43,13 +55,13 @@ export default function CustomerDetailPage() {
   const [comment, setComment] = useState("");
   const [optedOut, setOptedOut] = useState(false);
 
-  // Manual WhatsApp Message State
+  // Message modal state
   const [msgOpen, setMsgOpen] = useState(false);
   const [customMsg, setCustomMsg] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
   const [msgNotice, setMsgNotice] = useState<string | null>(null);
 
-  // Payment Recording Modal State
+  // Payment modal state
   const [payOpen, setPayOpen] = useState(false);
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState("CASH");
@@ -64,18 +76,17 @@ export default function CustomerDetailPage() {
     try {
       setLoading(true);
       const res = await fetch(`/api/customers/${customerId}`);
-      if (res.ok) {
-        const data = await res.json();
-        const c = data.customer;
-        setCustomer(c);
-        setPhone(c.primaryPhone || "");
-        setAddress(c.address || "");
-        setRecoveryPerson(c.recoveryPerson || "");
-        setComment(c.comment || "");
-        setOptedOut(c.optedOut || false);
+      const data = await safeJsonParse(res);
+      if (res.ok && data.customer) {
+        setCustomer(data.customer);
+        setPhone(data.customer.primaryPhone);
+        setAddress(data.customer.address || "");
+        setRecoveryPerson(data.customer.recoveryPerson || "");
+        setComment(data.customer.comment || "");
+        setOptedOut(data.customer.optedOut || false);
       }
     } catch (err) {
-      console.error("Failed to load customer profile", err);
+      console.error("Failed to load customer details", err);
     } finally {
       setLoading(false);
     }
@@ -125,15 +136,15 @@ export default function CustomerDetailPage() {
         }),
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        setMsgNotice("Message dispatched successfully!");
+      const data = await safeJsonParse(res);
+      if (res.ok && data.success) {
+        setMsgNotice(data.message || (data.status === "SENT" ? "Message dispatched successfully!" : "Message added to queue!"));
         setTimeout(() => {
           setMsgOpen(false);
           fetchCustomer();
-        }, 1200);
+        }, 1500);
       } else {
-        setMsgNotice("Error: " + (data.error || "Failed to send"));
+        setMsgNotice("Error: " + (data.error || "Failed to send message"));
       }
     } catch (err: any) {
       setMsgNotice("Error: " + err.message);

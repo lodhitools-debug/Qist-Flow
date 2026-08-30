@@ -218,7 +218,12 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
     }
 
     try {
-      const cleanPhone = payload.recipientPhone.replace(/[^0-9]/g, "");
+      let cleanPhone = payload.recipientPhone.replace(/[^0-9]/g, "");
+      if (cleanPhone.startsWith("03") && cleanPhone.length === 11) {
+        cleanPhone = "92" + cleanPhone.substring(1);
+      } else if (cleanPhone.startsWith("3") && cleanPhone.length === 10) {
+        cleanPhone = "92" + cleanPhone;
+      }
       const jid = `${cleanPhone}@s.whatsapp.net`;
 
       const result = await this.sock.sendMessage(jid, {

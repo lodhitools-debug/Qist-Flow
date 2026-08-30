@@ -23,6 +23,18 @@ import clsx from "clsx";
 import { getStatusBadgeConfig } from "@/lib/installment-engine";
 import { formatDisplayPhone } from "@/lib/excel/mapper";
 
+async function safeJsonParse(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      success: false,
+      error: `Server HTTP ${res.status}: ${text.slice(0, 200)}`,
+    };
+  }
+}
+
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,19 +55,22 @@ export default function CustomersPage() {
     try {
       setLoading(true);
       const params = new URLSearchParams({
+        page: page.toString(),
+        limit: "15",
         search,
         branch,
         status,
         recoveryPerson,
-        page: String(page),
-        limit: "20",
       });
 
       const res = await fetch(`/api/customers?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setCustomers(data.customers || []);
-        setPagination(data.pagination || { total: 0, totalPages: 1 });
+      const data = await safeJsonParse(res);
+      if (res.ok && data.customers) {
+        setCustomers(data.customers);
+        setPagination({
+          total: data.total || 0,
+          totalPages: data.totalPages || 1,
+        });
       }
     } catch (err) {
       console.error("Failed to load customers", err);
@@ -66,17 +81,18 @@ export default function CustomersPage() {
 
   useEffect(() => {
     fetchCustomers();
-  }, [search, branch, status, recoveryPerson, page]);
+  }, [page, search, branch, status, recoveryPerson]);
 
-  const openSendModal = (cust: any) => {
+  const handleOpenMessageModal = (cust: any) => {
     setSelectedCust(cust);
     const inst = cust.installments?.[0];
     const emi = inst?.emi || 0;
-    const bal = inst?.balance || 0;
-    const due = inst?.dueDate ? new Date(inst.dueDate).toISOString().split("T")[0] : "due date";
+    const balance = inst?.balance || 0;
+    const dueDate = inst?.dueDate ? new Date(inst.dueDate).toLocaleDateString() : "Due Date";
 
+    // Standard QistBazar personalized Urdu reminder template
     setMessageText(
-      `Assalam-o-Alaikum ${cust.customerName},\n\nAap ki Rs. ${emi} installment ki due date ${due} hai (Account: ${cust.account}).\nRemaining Balance: Rs. ${bal}.\n\nBarah-e-karam waqt par payment clear karein.\nShukriya,\nQistBazar Recovery Team`
+      `Mohtaram ${cust.customerName} Sahab, QistBazar se aapki qist Rs. ${emi.toLocaleString()} batan tareekh ${dueDate} wajib-ul-ada hai. Total baqaya balance Rs. ${balance.toLocaleString()} hai. Baraye meherbani qist ada farmayein. Shukriya.`
     );
     setSendResult(null);
   };
@@ -97,14 +113,15 @@ export default function CustomersPage() {
         }),
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        setSendResult("Message dispatched to WhatsApp queue successfully!");
+      const data = await safeJsonParse(res);
+      if (res.ok && data.success) {
+        setSendResult(data.message || (data.status === "SENT" ? "Message sent directly via WhatsApp!" : "Message dispatched to sending queue!"));
         setTimeout(() => {
           setSelectedCust(null);
+          fetchCustomers();
         }, 1500);
       } else {
-        setSendResult("Error: " + (data.error || "Failed to send"));
+        setSendResult("Error: " + (data.error || "Failed to dispatch message"));
       }
     } catch (err: any) {
       setSendResult("Error: " + err.message);

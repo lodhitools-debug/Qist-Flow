@@ -22,6 +22,18 @@ import { formatDisplayPhone } from "@/lib/excel/mapper";
 
 export const dynamic = "force-dynamic";
 
+async function safeJsonParse(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      success: false,
+      error: `Server HTTP ${res.status}: ${text.slice(0, 200)}`,
+    };
+  }
+}
+
 function BulkReminderWizardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -51,7 +63,7 @@ function BulkReminderWizardContent() {
   // Fetch Templates
   useEffect(() => {
     fetch("/api/templates")
-      .then((res) => res.json())
+      .then((res) => safeJsonParse(res))
       .then((data) => {
         setTemplates(data.templates || []);
         if (data.templates && data.templates.length > 0) {
@@ -73,8 +85,8 @@ function BulkReminderWizardContent() {
       });
 
       const res = await fetch(`/api/recovery/targets?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
+      const data = await safeJsonParse(res);
+      if (res.ok && data.targets) {
         const list = data.targets || [];
         setTargets(list);
         // Default select all
@@ -132,8 +144,8 @@ function BulkReminderWizardContent() {
         }),
       });
 
-      const data = await res.json();
-      if (res.ok) {
+      const data = await safeJsonParse(res);
+      if (res.ok && data.success) {
         setResultSummary(data.result);
         setStep(3);
       } else {
