@@ -5,14 +5,14 @@
   "description": "QistFlow — Smart Recovery & WhatsApp Reminder System",
   "scripts": {
     "dev": "next dev",
+    "postinstall": "prisma generate",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
+    "prisma:migrate": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
-    "prisma:pg": "npx tsx scripts/switch-db.ts pg",
-    "prisma:sqlite": "npx tsx scripts/switch-db.ts sqlite",
     "worker": "tsx scripts/start-worker.ts",
     "test:excel": "tsx scripts/test-excel-import.ts",
     "test": "tsx scripts/run-all-tests.ts"
