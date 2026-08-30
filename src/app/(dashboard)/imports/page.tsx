@@ -10,8 +10,6 @@ import {
   ArrowRight,
   ArrowLeft,
   Download,
-  ShieldCheck,
-  RefreshCw,
   Sliders,
   SlidersHorizontal,
   Table,
@@ -27,11 +25,22 @@ import {
   Smartphone,
   Briefcase,
   Users,
-  Check,
   Calendar,
   Layers,
 } from "lucide-react";
 import clsx from "clsx";
+
+async function safeJsonParse(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      success: false,
+      error: `Server HTTP ${res.status}: ${text.slice(0, 250)}`,
+    };
+  }
+}
 
 interface ColumnDef {
   key: string;
@@ -433,8 +442,8 @@ export default function ExcelImportPage() {
         body: formData,
       });
 
-      const data = await res.json();
-      if (!res.ok) {
+      const data = await safeJsonParse(res);
+      if (!res.ok || !data.headers) {
         throw new Error(data.error || "Failed to parse Excel file");
       }
 
@@ -464,8 +473,8 @@ export default function ExcelImportPage() {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
+      const data = await safeJsonParse(res);
+      if (!res.ok || !data.success) {
         throw new Error(data.error || "Validation failed");
       }
 
@@ -493,8 +502,8 @@ export default function ExcelImportPage() {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
+      const data = await safeJsonParse(res);
+      if (!res.ok || !data.success) {
         throw new Error(data.error || "Import processing failed");
       }
 
