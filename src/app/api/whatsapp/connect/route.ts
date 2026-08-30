@@ -27,7 +27,8 @@ export async function POST(req: NextRequest) {
 
     // 2. Fetch current session or initialize
     const currentSession = await prisma.whatsAppSession.findUnique({ where: { id: "default" } });
-    const targetStatus = currentSession?.status === "QR_READY" ? "QR_READY" : "CONNECTING";
+    const isAlreadyConnected = !!currentSession?.connectedPhone;
+    const targetStatus = isAlreadyConnected ? "CONNECTED" : (currentSession?.status === "QR_READY" ? "QR_READY" : "CONNECTING");
 
     const updatedSession = await prisma.whatsAppSession.upsert({
       where: { id: "default" },

@@ -25,10 +25,13 @@ export async function GET(req: NextRequest) {
       }).catch(() => 0);
     } catch {}
 
+    const isConnected = !!dbSession?.connectedPhone;
+    const computedStatus = isConnected ? "CONNECTED" : (dbSession?.status || "DISCONNECTED");
+
     return NextResponse.json({
       success: true,
-      status: dbSession?.status || "DISCONNECTED",
-      qrCode: dbSession?.qrCode || null,
+      status: computedStatus,
+      qrCode: isConnected ? null : (dbSession?.qrCode || null),
       phone: dbSession?.connectedPhone || null,
       name: dbSession?.connectedName || null,
       connectedAt: dbSession?.connectedAt || null,
