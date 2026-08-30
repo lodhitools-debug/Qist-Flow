@@ -1,59 +1,64 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getWhatsAppProvider } from "@/lib/whatsapp/provider-factory";
+import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { logActivity } from "@/lib/audit";
-import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
     const session = await getSessionUser(req);
-    const provider = getWhatsAppProvider();
 
-    // 1. Mark session as CONNECTING in database
-    await prisma.whatsAppSession.upsert({
+    // 1. If AlwaysData remote worker is configured via WHATSAPP_SERVICE_URL, notify it
+    const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
+    if (serviceUrl) {
+      try {
+        await fetch(`${serviceUrl}/api/wa/connect`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "",
+          },
+        });
+      } catch (err: any) {
+        console.warn("[AlwaysData Worker Connect Warning]:", err.message);
+      }
+    }
+
+    // 2. Fetch current session or initialize
+    const currentSession = await prisma.whatsAppSession.findUnique({ where: { id: "default" } });
+    const targetStatus = currentSession?.status === "QR_READY" ? "QR_READY" : "CONNECTING";
+
+    const updatedSession = await prisma.whatsAppSession.upsert({
       where: { id: "default" },
       update: {
-        status: "CONNECTING",
-        qrCode: null,
+        status: targetStatus,
         errorMessage: null,
         updatedAt: new Date(),
       },
       create: {
         id: "default",
-        status: "CONNECTING",
+        status: targetStatus,
       },
-    }).catch(() => {});
-
-    // 2. Initialize provider (Local or Remote AlwaysData worker)
-    try {
-      await provider.init();
-    } catch (initErr: any) {
-      console.warn("[WhatsApp Connect Warning]:", initErr.message);
-    }
+    });
 
     await logActivity({
       userId: session?.userId,
       action: "WHATSAPP_CONNECT_INIT",
-      details: { provider: provider.name },
+      details: { serviceUrl: serviceUrl || "Supabase DB sync" },
     }).catch(() => {});
-
-    const info = await provider.getConnectedInfo();
 
     return NextResponse.json({
       success: true,
-      message: "WhatsApp connection initialized. Awaiting QR code generation...",
-      ...info,
+      status: updatedSession.status,
+      qrCode: updatedSession.qrCode,
+      message: "WhatsApp connection initialized. Awaiting QR code...",
     });
   } catch (error: any) {
-    return NextResponse.json(
-      {
-        success: false,
-        status: "CONNECTING",
-        error: error.message || "Failed to initialize WhatsApp connection",
-      },
-      { status: 200 } // Return 200 with error payload so frontend safely parses JSON
-    );
+    return NextResponse.json({
+      success: false,
+      status: "CONNECTING",
+      error: error.message || "Failed to initialize WhatsApp connection",
+    });
   }
 }

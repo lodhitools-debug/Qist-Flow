@@ -1,48 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getWhatsAppProvider } from "@/lib/whatsapp/provider-factory";
-import { getQueueStats } from "@/lib/whatsapp/message-queue";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    // 1. Fetch live DB session record (synced with AlwaysData / Baileys worker)
-    const dbSession = await prisma.whatsAppSession.findUnique({
-      where: { id: "default" },
-    }).catch(() => null);
-
-    // 2. Fetch live queue metrics
-    const queueStats = await getQueueStats().catch(() => ({
-      queued: 0,
-      sending: 0,
-      sentToday: 0,
-      failedToday: 0,
-    }));
-
-    // 3. Check provider state
-    let providerName = "WhatsApp Web (Baileys)";
-    let liveInfo: any = {};
-    try {
-      const provider = getWhatsAppProvider();
-      providerName = provider.name;
-      liveInfo = await provider.getConnectedInfo().catch(() => ({}));
-    } catch {}
-
-    const finalStatus = liveInfo.status || dbSession?.status || "DISCONNECTED";
-    const finalQrCode = liveInfo.qrCode || dbSession?.qrCode || null;
+    const [dbSession, queuedCount, sendingCount, sentToday, failedToday] = await Promise.all([
+      prisma.whatsAppSession.findUnique({ where: { id: "default" } }),
+      prisma.messageQueue.count({ where: { status: "QUEUED" } }),
+      prisma.messageQueue.count({ where: { status: "SENDING" } }),
+      prisma.messageLog.count({
+        where: {
+          status: "SENT",
+          sentAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+        },
+      }),
+      prisma.messageLog.count({
+        where: {
+          status: "FAILED",
+          sentAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+        },
+      }),
+    ]);
 
     return NextResponse.json({
       success: true,
-      providerName,
-      status: finalStatus,
-      qrCode: finalQrCode,
-      phone: liveInfo.phone || dbSession?.connectedPhone || null,
-      name: liveInfo.name || dbSession?.connectedName || null,
-      connectedAt: liveInfo.connectedAt || dbSession?.connectedAt || null,
-      lastActiveAt: liveInfo.lastActiveAt || dbSession?.lastActiveAt || null,
-      errorMessage: liveInfo.errorMessage || dbSession?.errorMessage || null,
-      queueStats,
+      status: dbSession?.status || "DISCONNECTED",
+      qrCode: dbSession?.qrCode || null,
+      phone: dbSession?.connectedPhone || null,
+      name: dbSession?.connectedName || null,
+      connectedAt: dbSession?.connectedAt || null,
+      lastActiveAt: dbSession?.lastActiveAt || null,
+      errorMessage: dbSession?.errorMessage || null,
+      queueStats: {
+        queued: queuedCount,
+        sending: sendingCount,
+        sentToday,
+        failedToday,
+      },
     });
   } catch (error: any) {
     return NextResponse.json({
