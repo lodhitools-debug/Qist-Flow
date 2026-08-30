@@ -24,11 +24,24 @@ export default function WhatsAppConnectionPage() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const safeJsonParse = async (res: Response) => {
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      try {
+        return await res.json();
+      } catch {
+        return { error: "Failed to parse JSON response" };
+      }
+    }
+    const text = await res.text();
+    return { error: text.length > 200 ? `Server returned HTTP ${res.status}` : text };
+  };
+
   const fetchStatus = async () => {
     try {
       const res = await fetch("/api/whatsapp/status");
-      if (res.ok) {
-        const data = await res.json();
+      const data = await safeJsonParse(res);
+      if (data && data.status) {
         setStatus(data.status || "DISCONNECTED");
         setQrCode(data.qrCode || null);
         setPhone(data.phone || null);
@@ -53,18 +66,23 @@ export default function WhatsAppConnectionPage() {
   const handleConnect = async () => {
     try {
       setLoading(true);
-      setNotice(null);
+      setNotice("Initializing WhatsApp session. Awaiting QR code from AlwaysData worker...");
       const res = await fetch("/api/whatsapp/connect", { method: "POST" });
-      const data = await res.json();
-      if (res.ok) {
+      const data = await safeJsonParse(res);
+
+      if (data && data.success) {
         setStatus(data.status || "CONNECTING");
         setQrCode(data.qrCode || null);
-        setNotice("Initializing WhatsApp session. Please wait for QR code...");
+        setNotice(data.message || "Initializing WhatsApp session. Please wait for QR code...");
+      } else if (data && data.status === "CONNECTING") {
+        setStatus("CONNECTING");
+        setQrCode(data.qrCode || null);
+        setNotice("Worker connecting... Please wait a moment for the QR code to stream.");
       } else {
-        setNotice("Error: " + (data.error || "Failed to initialize"));
+        setNotice(data.error ? `Status: ${data.error}` : "WhatsApp worker initializing. Please wait...");
       }
     } catch (err: any) {
-      setNotice("Error: " + err.message);
+      setNotice("Connection note: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -75,11 +93,14 @@ export default function WhatsAppConnectionPage() {
     try {
       setLoading(true);
       const res = await fetch("/api/whatsapp/disconnect", { method: "POST" });
-      if (res.ok) {
+      const data = await safeJsonParse(res);
+      if (res.ok && data) {
         setStatus("DISCONNECTED");
         setQrCode(null);
         setPhone(null);
         setNotice("WhatsApp session disconnected.");
+      } else {
+        setNotice("Error disconnecting: " + (data.error || "Unknown error"));
       }
     } catch (err: any) {
       setNotice("Error: " + err.message);
