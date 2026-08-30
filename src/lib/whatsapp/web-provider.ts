@@ -1,9 +1,15 @@
+import crypto from "node:crypto";
+if (!globalThis.crypto || !globalThis.crypto.subtle) {
+  (globalThis as any).crypto = (crypto as any).webcrypto || crypto;
+}
+
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
   WASocket,
   fetchLatestBaileysVersion,
   ConnectionState,
+  Browsers,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import pino from "pino";
@@ -44,7 +50,13 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
       await this.updateDbSession();
 
       const { state, saveCreds } = await useMultiFileAuthState(this.sessionDir);
-      const { version } = await fetchLatestBaileysVersion();
+      let version: any = [2, 3000, 1043857760];
+      try {
+        const vData = await fetchLatestBaileysVersion().catch(() => null);
+        if (vData && vData.version) {
+          version = vData.version;
+        }
+      } catch (e) {}
 
       const logger = pino({ level: "silent" });
 
@@ -53,10 +65,11 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
         logger,
         printQRInTerminal: false,
         auth: state,
-        browser: ["QistFlow Recovery", "Chrome", "1.0.0"],
+        browser: Browsers.macOS("Desktop"),
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 25000,
+        syncFullHistory: false,
         generateHighQualityLinkPreview: false,
       });
 
@@ -66,10 +79,13 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
+          console.log("📲 [Baileys] Real pairing QR code received! Converting to Data URL...");
           this.qrCodeString = qr;
           try {
             this.qrCodeDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 7 });
+            console.log("✅ [Baileys] QR Data URL generated successfully!");
           } catch (e) {
+            console.error("❌ [Baileys] Failed to convert QR to DataURL:", e);
             this.qrCodeDataUrl = null;
           }
           this.connectionState = "QR_READY";

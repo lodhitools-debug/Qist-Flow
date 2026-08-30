@@ -7,27 +7,50 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const provider = getWhatsAppProvider();
-    const info = await provider.getConnectedInfo();
-    const queueStats = await getQueueStats().catch(() => ({ queued: 0, sending: 0, sent: 0, failed: 0 }));
+    // 1. Fetch live DB session record (synced with AlwaysData / Baileys worker)
+    const dbSession = await prisma.whatsAppSession.findUnique({
+      where: { id: "default" },
+    }).catch(() => null);
+
+    // 2. Fetch live queue metrics
+    const queueStats = await getQueueStats().catch(() => ({
+      queued: 0,
+      sending: 0,
+      sentToday: 0,
+      failedToday: 0,
+    }));
+
+    // 3. Check provider state
+    let providerName = "WhatsApp Web (Baileys)";
+    let liveInfo: any = {};
+    try {
+      const provider = getWhatsAppProvider();
+      providerName = provider.name;
+      liveInfo = await provider.getConnectedInfo().catch(() => ({}));
+    } catch {}
+
+    const finalStatus = liveInfo.status || dbSession?.status || "DISCONNECTED";
+    const finalQrCode = liveInfo.qrCode || dbSession?.qrCode || null;
 
     return NextResponse.json({
-      providerName: provider.name,
-      ...info,
+      success: true,
+      providerName,
+      status: finalStatus,
+      qrCode: finalQrCode,
+      phone: liveInfo.phone || dbSession?.connectedPhone || null,
+      name: liveInfo.name || dbSession?.connectedName || null,
+      connectedAt: liveInfo.connectedAt || dbSession?.connectedAt || null,
+      lastActiveAt: liveInfo.lastActiveAt || dbSession?.lastActiveAt || null,
+      errorMessage: liveInfo.errorMessage || dbSession?.errorMessage || null,
       queueStats,
     });
   } catch (error: any) {
-    // Database fallback
-    const dbSession = await prisma.whatsAppSession.findUnique({ where: { id: "default" } }).catch(() => null);
-
     return NextResponse.json({
-      status: dbSession?.status || "DISCONNECTED",
-      qrCode: dbSession?.qrCode || null,
-      phone: dbSession?.connectedPhone || undefined,
-      name: dbSession?.connectedName || undefined,
-      connectedAt: dbSession?.connectedAt || undefined,
-      errorMessage: dbSession?.errorMessage || error.message || null,
-      queueStats: { queued: 0, sending: 0, sent: 0, failed: 0 },
+      success: false,
+      status: "DISCONNECTED",
+      qrCode: null,
+      error: error.message || "Failed to retrieve status",
+      queueStats: { queued: 0, sending: 0, sentToday: 0, failedToday: 0 },
     });
   }
 }
