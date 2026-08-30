@@ -1,0 +1,299 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  QrCode,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  RefreshCw,
+  Power,
+  Smartphone,
+  ShieldCheck,
+  Zap,
+} from "lucide-react";
+import clsx from "clsx";
+
+export default function WhatsAppConnectionPage() {
+  const [status, setStatus] = useState<string>("DISCONNECTED");
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [phone, setPhone] = useState<string | null>(null);
+  const [connectedName, setConnectedName] = useState<string | null>(null);
+  const [connectedAt, setConnectedAt] = useState<string | null>(null);
+  const [lastActiveAt, setLastActiveAt] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch("/api/whatsapp/status");
+      if (res.ok) {
+        const data = await res.json();
+        setStatus(data.status || "DISCONNECTED");
+        setQrCode(data.qrCode || null);
+        setPhone(data.phone || null);
+        setConnectedName(data.name || null);
+        setConnectedAt(data.connectedAt || null);
+        setLastActiveAt(data.lastActiveAt || null);
+      }
+    } catch (err) {
+      console.error("Failed to poll WhatsApp status", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchStatus();
+    // Poll every 3 seconds when connecting or awaiting QR scan
+    const interval = setInterval(() => {
+      fetchStatus();
+    }, 3500);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleConnect = async () => {
+    try {
+      setLoading(true);
+      setNotice(null);
+      const res = await fetch("/api/whatsapp/connect", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setStatus(data.status || "CONNECTING");
+        setQrCode(data.qrCode || null);
+        setNotice("Initializing WhatsApp session. Please wait for QR code...");
+      } else {
+        setNotice("Error: " + (data.error || "Failed to initialize"));
+      }
+    } catch (err: any) {
+      setNotice("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!confirm("Are you sure you want to disconnect the active WhatsApp session?")) return;
+    try {
+      setLoading(true);
+      const res = await fetch("/api/whatsapp/disconnect", { method: "POST" });
+      if (res.ok) {
+        setStatus("DISCONNECTED");
+        setQrCode(null);
+        setPhone(null);
+        setNotice("WhatsApp session disconnected.");
+      }
+    } catch (err: any) {
+      setNotice("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
+            <QrCode className="w-5 h-5 text-emerald-500" />
+            <span>WhatsApp Device Connection</span>
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Link recovery staff WhatsApp account to send automatic installment reminder notices.
+          </p>
+        </div>
+
+        <button
+          onClick={fetchStatus}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 self-start sm:self-auto"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          <span>Refresh Status</span>
+        </button>
+      </div>
+
+      {notice && (
+        <div
+          className={clsx(
+            "p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2.5",
+            notice.startsWith("Error")
+              ? "bg-rose-50 text-rose-700 border border-rose-200"
+              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+          )}
+        >
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span>{notice}</span>
+        </div>
+      )}
+
+      {/* Main Connection Card */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+        {status === "CONNECTED" ? (
+          /* STATE: CONNECTED */
+          <div className="space-y-6 animate-in fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                  <CheckCircle2 className="w-7 h-7" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-emerald-950 dark:text-emerald-100">
+                      WhatsApp Connected 🟢
+                    </h2>
+                    <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded bg-emerald-500 text-white">
+                      Live
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+                    Phone: <span className="font-mono font-bold">{phone || "Linked Number"}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  disabled={loading}
+                  onClick={handleConnect}
+                  className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition-colors"
+                >
+                  Reconnect
+                </button>
+                <button
+                  disabled={loading}
+                  onClick={handleDisconnect}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-500/20 flex items-center gap-1.5 transition-colors"
+                >
+                  <Power className="w-3.5 h-3.5" />
+                  <span>Disconnect</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Session Stats Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                <span className="text-[11px] text-slate-400 block">Session Name</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 mt-0.5 block">
+                  {connectedName || "QistFlow WhatsApp Web"}
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                <span className="text-[11px] text-slate-400 block">Connected Since</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 mt-0.5 block">
+                  {connectedAt ? new Date(connectedAt).toLocaleString("en-PK") : "Active Session"}
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                <span className="text-[11px] text-slate-400 block">Last Active</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 mt-0.5 block">
+                  {lastActiveAt ? new Date(lastActiveAt).toLocaleTimeString("en-PK") : "Just now"}
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* STATE: DISCONNECTED / QR READY / CONNECTING */
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+            {/* Left Column: Instructions & Action */}
+            <div className="space-y-5">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                <span>WhatsApp Disconnected</span>
+              </div>
+
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Connect WhatsApp via QR Code
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Link your recovery mobile device to allow automated delivery of Urdu installment reminders.
+                </p>
+              </div>
+
+              {/* Instructions List */}
+              <div className="space-y-3 text-xs bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                <div className="flex items-start gap-3">
+                  <div className="w-5 h-5 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">
+                    1
+                  </div>
+                  <div>Open <strong>WhatsApp</strong> on your recovery mobile phone.</div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-5 h-5 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">
+                    2
+                  </div>
+                  <div>Tap <strong>Menu (⋮)</strong> or <strong>Settings</strong> → select <strong>Linked Devices</strong>.</div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-5 h-5 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">
+                    3
+                  </div>
+                  <div>Tap <strong>Link a Device</strong> and point your camera at the QR code.</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  disabled={loading}
+                  onClick={handleConnect}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-bold shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center gap-2 transition-all hover:scale-105"
+                >
+                  {loading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <QrCode className="w-4 h-4" />
+                  )}
+                  <span>{qrCode ? "Regenerate QR Code" : "Connect WhatsApp"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Right Column: QR Code Display Card */}
+            <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-center min-h-[320px]">
+              {qrCode ? (
+                <div className="space-y-3 animate-in zoom-in-95">
+                  <div className="p-3 bg-white rounded-2xl shadow-xl border border-slate-200 inline-block">
+                    <img src={qrCode} alt="WhatsApp QR Code" className="w-56 h-56 rounded-lg" />
+                  </div>
+                  <div className="text-xs font-semibold text-emerald-600 flex items-center justify-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    <span>Awaiting QR scan from phone...</span>
+                  </div>
+                </div>
+              ) : status === "CONNECTING" ? (
+                <div className="space-y-3">
+                  <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    Generating secure pairing QR code...
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 text-slate-400">
+                  <Smartphone className="w-12 h-12 mx-auto stroke-[1.5]" />
+                  <p className="text-xs font-medium">
+                    Click "Connect WhatsApp" to display the pairing QR code.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Safety & Compliance Card */}
+      <div className="bg-slate-900 text-slate-200 p-5 rounded-2xl border border-slate-800 flex items-start gap-3.5 text-xs">
+        <ShieldCheck className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <span className="font-bold text-white">Security & Modular WhatsApp Architecture</span>
+          <p className="text-slate-400 leading-relaxed text-[11px]">
+            QistFlow never exposes WhatsApp authentication tokens to the browser. All sessions are encrypted on the server with automated safe-reconnection. The architecture is modular and ready for Meta Cloud API integration.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

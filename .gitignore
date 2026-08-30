@@ -1,0 +1,49 @@
+# Dependencies
+node_modules
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Next.js
+/.next/
+/out/
+
+# Production
+/build
+
+# Misc
+.DS_Store
+*.pem
+
+# Local env files
+.env
+.env*.local
+.env.production
+.env.development
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# SQLite / Prisma
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# WhatsApp Auth Session Files (Never commit session tokens)
+/whatsapp_auth/
+/whatsapp_sessions/
+/backups/
+/uploads/
