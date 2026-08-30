@@ -1,3 +1,5 @@
+process.env.IS_WORKER = "true";
+
 import http from "http";
 import { waWebProvider } from "../src/lib/whatsapp/web-provider";
 import { processQueueWorker } from "../src/lib/whatsapp/message-queue";

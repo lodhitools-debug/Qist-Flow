@@ -1,20 +1,20 @@
 import { IWhatsAppProvider } from "./types";
-import { waWebProvider } from "./web-provider";
-import { WhatsAppCloudProvider } from "./cloud-provider";
 import { RemoteWhatsAppProvider } from "./remote-provider";
 
 export function getWhatsAppProvider(): IWhatsAppProvider {
   const providerType = (process.env.WHATSAPP_PROVIDER_TYPE || "WEB").toUpperCase();
 
   if (providerType === "CLOUD") {
+    const { WhatsAppCloudProvider } = require("./cloud-provider");
     return new WhatsAppCloudProvider();
   }
 
-  // If WHATSAPP_SERVICE_URL is set (Vercel serverless connecting to AlwaysData worker)
-  if (process.env.WHATSAPP_SERVICE_URL && process.env.WHATSAPP_SERVICE_URL.trim() !== "") {
-    return new RemoteWhatsAppProvider();
+  // If this process is the background worker daemon (AlwaysData / local standalone worker)
+  if (process.env.IS_WORKER === "true" || process.env.RUN_AS_WORKER === "true") {
+    const { waWebProvider } = require("./web-provider");
+    return waWebProvider;
   }
 
-  // Local / AlwaysData standalone process direct Baileys provider
-  return waWebProvider;
+  // In Next.js Serverless runtime (Vercel), always use RemoteWhatsAppProvider
+  return new RemoteWhatsAppProvider();
 }
