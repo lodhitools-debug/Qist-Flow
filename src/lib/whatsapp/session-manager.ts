@@ -29,10 +29,10 @@ import {
   WhatsAppSendResult,
 } from "./types";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-user isolated WhatsApp session
+// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Encapsulates an isolated WhatsApp Baileys socket session for a specific user
- */
 export class UserWhatsAppSession {
   public readonly userId: string;
   public readonly sessionDir: string;
@@ -50,28 +50,28 @@ export class UserWhatsAppSession {
   private lastActiveAt: Date | null = null;
   private reconnectAttempts: number = 0;
   private errorMessage: string | null = null;
+
+  // Lifecycle guards
   private isConnecting: boolean = false;
+  private isLoggedOut: boolean = false;           // Prevents any re-init after logout
+  private userRequestedDisconnect: boolean = false; // Prevents auto-reconnect after user disconnect
   private reconnectTimeout: NodeJS.Timeout | null = null;
+  private qrWatchdogTimeout: NodeJS.Timeout | null = null;
 
   constructor(userId: string) {
     this.userId = userId;
     const baseDir = path.join(process.cwd(), "whatsapp_sessions");
     if (!fs.existsSync(baseDir)) {
-      try {
-        fs.mkdirSync(baseDir, { recursive: true });
-      } catch {}
+      try { fs.mkdirSync(baseDir, { recursive: true }); } catch {}
     }
     this.sessionDir = path.join(baseDir, userId);
     if (!fs.existsSync(this.sessionDir)) {
-      try {
-        fs.mkdirSync(this.sessionDir, { recursive: true });
-      } catch {}
+      try { fs.mkdirSync(this.sessionDir, { recursive: true }); } catch {}
     }
   }
 
-  /**
-   * Checks if valid authentication credentials exist on disk for this user
-   */
+  // ── Public state accessors ────────────────────────────────────────────────
+
   public hasSavedAuth(): boolean {
     try {
       const credsPath = path.join(this.sessionDir, "creds.json");
@@ -91,8 +91,12 @@ export class UserWhatsAppSession {
     return this.connectionState;
   }
 
+  public isIntentionallyLoggedOut(): boolean {
+    return this.isLoggedOut;
+  }
+
   public async getConnectedInfo(): Promise<WhatsAppConnectedInfo> {
-    // If QR code expired, clear it
+    // Clear expired QR
     if (this.qrExpiresAt && new Date() > this.qrExpiresAt && this.connectionState === "QR_READY") {
       this.qrCodeDataUrl = null;
       this.qrCodeString = null;
@@ -116,113 +120,124 @@ export class UserWhatsAppSession {
     };
   }
 
-  /**
-   * Synchronizes this user's connection status to the Supabase database
-   */
-  public async updateDbSession(): Promise<void> {
-    try {
-      if (this.userId && this.userId !== "default") {
-        await prisma.whatsAppSession.upsert({
-          where: { userId: this.userId },
-          update: {
-            status: this.connectionState,
-            qrCode: this.qrCodeDataUrl,
-            qrExpiresAt: this.qrExpiresAt,
-            pairingCode: this.pairingCode,
-            connectedPhone: this.connectedPhone,
-            connectedName: this.connectedName,
-            connectedAt: this.connectedAt,
-            lastDisconnectedAt: this.lastDisconnectedAt,
-            lastActiveAt: this.lastActiveAt || new Date(),
-            reconnectAttempts: this.reconnectAttempts,
-            errorMessage: this.errorMessage,
-          },
-          create: {
-            userId: this.userId,
-            status: this.connectionState,
-            qrCode: this.qrCodeDataUrl,
-            qrExpiresAt: this.qrExpiresAt,
-            pairingCode: this.pairingCode,
-            connectedPhone: this.connectedPhone,
-            connectedName: this.connectedName,
-            connectedAt: this.connectedAt,
-            lastDisconnectedAt: this.lastDisconnectedAt,
-            lastActiveAt: new Date(),
-            reconnectAttempts: this.reconnectAttempts,
-            errorMessage: this.errorMessage,
-          },
-        }).catch(() => {});
-      }
+  // ── DB sync — ONLY writes to this user's own row, NEVER to "default" ──────
 
-      // Update legacy "default" session if this is the default session or if this session is generating QR/Pairing/Connected
-      if (
-        this.userId === "default" ||
-        this.connectionState === "QR_READY" ||
-        this.connectionState === "CONNECTED" ||
-        this.connectionState === "PAIRING"
-      ) {
-        await prisma.whatsAppSession.upsert({
-          where: { id: "default" },
-          update: {
-            status: this.connectionState,
-            qrCode: this.qrCodeDataUrl,
-            qrExpiresAt: this.qrExpiresAt,
-            pairingCode: this.pairingCode,
-            connectedPhone: this.connectedPhone,
-            connectedName: this.connectedName,
-            connectedAt: this.connectedAt,
-            lastDisconnectedAt: this.lastDisconnectedAt,
-            lastActiveAt: this.lastActiveAt || new Date(),
-            reconnectAttempts: this.reconnectAttempts,
-            errorMessage: this.errorMessage,
-          },
-          create: {
-            id: "default",
-            status: this.connectionState,
-            qrCode: this.qrCodeDataUrl,
-            qrExpiresAt: this.qrExpiresAt,
-            pairingCode: this.pairingCode,
-            connectedPhone: this.connectedPhone,
-            connectedName: this.connectedName,
-            connectedAt: this.connectedAt,
-            lastDisconnectedAt: this.lastDisconnectedAt,
-            lastActiveAt: new Date(),
-            reconnectAttempts: this.reconnectAttempts,
-            errorMessage: this.errorMessage,
-          },
-        }).catch(() => {});
-      }
+  public async updateDbSession(): Promise<void> {
+    if (!this.userId || this.userId === "default") return;
+    try {
+      await prisma.whatsAppSession.upsert({
+        where: { userId: this.userId },
+        update: {
+          status: this.connectionState,
+          qrCode: this.qrCodeDataUrl,
+          qrExpiresAt: this.qrExpiresAt,
+          pairingCode: this.pairingCode,
+          connectedPhone: this.connectedPhone,
+          connectedName: this.connectedName,
+          connectedAt: this.connectedAt,
+          lastDisconnectedAt: this.lastDisconnectedAt,
+          lastActiveAt: this.lastActiveAt || new Date(),
+          reconnectAttempts: this.reconnectAttempts,
+          errorMessage: this.errorMessage,
+          updatedAt: new Date(),
+        },
+        create: {
+          userId: this.userId,
+          status: this.connectionState,
+          qrCode: this.qrCodeDataUrl,
+          qrExpiresAt: this.qrExpiresAt,
+          pairingCode: this.pairingCode,
+          connectedPhone: this.connectedPhone,
+          connectedName: this.connectedName,
+          connectedAt: this.connectedAt,
+          lastDisconnectedAt: this.lastDisconnectedAt,
+          lastActiveAt: new Date(),
+          reconnectAttempts: this.reconnectAttempts,
+          errorMessage: this.errorMessage,
+        },
+      }).catch((err) => {
+        console.warn(`⚠️ [DB Sync Warning for User ${this.userId}]:`, err.message);
+      });
     } catch (err: any) {
-      console.warn(`⚠️ [DB Sync Warning for User ${this.userId}]:`, err.message);
+      console.warn(`⚠️ [DB Sync Error for User ${this.userId}]:`, err.message);
     }
   }
 
-  /**
-   * Initializes or reconnects this user's isolated WhatsApp socket
-   */
-  public async init(): Promise<void> {
-    if (this.isConnecting || this.isConnected()) {
-      return;
-    }
+  // ── Internal helpers ──────────────────────────────────────────────────────
 
+  private clearTimers() {
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
+    if (this.qrWatchdogTimeout) {
+      clearTimeout(this.qrWatchdogTimeout);
+      this.qrWatchdogTimeout = null;
+    }
+  }
+
+  private destroySocket() {
+    if (this.sock) {
+      try {
+        this.sock.ev.removeAllListeners();
+        this.sock.end(undefined);
+      } catch {}
+      this.sock = null;
+    }
+  }
+
+  // ── QR watchdog: if no QR arrives within 30s, reset to NOT_CONNECTED ──────
+
+  private startQrWatchdog() {
+    this.clearTimers();
+    this.qrWatchdogTimeout = setTimeout(async () => {
+      if (this.connectionState === "CONNECTING" || this.connectionState === "INIT_QR") {
+        console.warn(`⏱️ [User ${this.userId}] QR watchdog triggered — no QR within 30s. Resetting.`);
+        this.destroySocket();
+        this.isConnecting = false;
+        this.connectionState = "NOT_CONNECTED";
+        this.errorMessage = null;
+        await this.updateDbSession();
+      }
+    }, 30_000);
+  }
+
+  // ── Core init / socket creation ───────────────────────────────────────────
+
+  public async init(): Promise<void> {
+    // Guards
+    if (this.isLoggedOut) {
+      console.log(`🚫 [User ${this.userId}] init() blocked — user is logged out.`);
+      return;
+    }
+    if (this.isConnecting) {
+      console.log(`⏳ [User ${this.userId}] init() skipped — already connecting.`);
+      return;
+    }
+    if (this.isConnected()) {
+      console.log(`✅ [User ${this.userId}] init() skipped — already connected.`);
+      return;
+    }
+
+    // Destroy any stale socket before creating a new one
+    this.destroySocket();
+    this.clearTimers();
 
     this.isConnecting = true;
     this.connectionState = "CONNECTING";
     this.errorMessage = null;
+    this.userRequestedDisconnect = false;
     await this.updateDbSession();
+
+    // Start QR watchdog
+    this.startQrWatchdog();
 
     try {
       const { state, saveCreds } = await useMultiFileAuthState(this.sessionDir);
       let version: any = [2, 3000, 1043857760];
       try {
         const vData = await fetchLatestBaileysVersion().catch(() => null);
-        if (vData?.version) {
-          version = vData.version;
-        }
+        if (vData?.version) version = vData.version;
       } catch {}
 
       const logger = pino({ level: "silent" });
@@ -233,11 +248,11 @@ export class UserWhatsAppSession {
         printQRInTerminal: false,
         auth: state,
         browser: Browsers.windows("Chrome"),
-        connectTimeoutMs: 180000,
-        defaultQueryTimeoutMs: 180000,
-        keepAliveIntervalMs: 15000,
-        retryRequestDelayMs: 2500,
-        maxMsgRetryCount: 5,
+        connectTimeoutMs: 60_000,
+        defaultQueryTimeoutMs: 60_000,
+        keepAliveIntervalMs: 15_000,
+        retryRequestDelayMs: 2_000,
+        maxMsgRetryCount: 3,
         syncFullHistory: false,
         markOnlineOnConnect: true,
         generateHighQualityLinkPreview: false,
@@ -246,7 +261,7 @@ export class UserWhatsAppSession {
 
       this.isConnecting = false;
 
-      // Handle credentials update and automatic phone extraction
+      // Credentials saved → extract phone
       this.sock.ev.on("creds.update", async () => {
         await saveCreds();
         if (state.creds?.me?.id && !this.connectedPhone) {
@@ -257,84 +272,110 @@ export class UserWhatsAppSession {
           this.qrCodeString = null;
           this.qrCodeDataUrl = null;
           this.qrExpiresAt = null;
-          this.errorMessage = null;
+          this.clearTimers();
           await this.updateDbSession();
         }
       });
 
-      // Handle socket connection updates
+      // Connection state updates
       this.sock.ev.on("connection.update", async (update: Partial<ConnectionState>) => {
         const { connection, lastDisconnect, qr } = update;
 
-        // 1. QR Code generated (only when not already registered)
+        // QR Code generated
         if (qr && !state.creds?.registered) {
+          this.clearTimers(); // Cancel watchdog — QR arrived
           this.qrCodeString = qr;
           try {
             this.qrCodeDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 7 });
-            this.qrExpiresAt = new Date(Date.now() + 60 * 1000); // 60s expiration
-            console.log(`\n📲 [User ${this.userId}] WhatsApp Pairing QR Code Generated!`);
+            this.qrExpiresAt = new Date(Date.now() + 60_000);
+            console.log(`📲 [User ${this.userId}] QR Code Generated — expires in 60s`);
           } catch (e: any) {
             console.error(`❌ [User ${this.userId}] QR to DataURL failed:`, e.message);
             this.qrCodeDataUrl = null;
           }
           this.connectionState = "QR_READY";
           await this.updateDbSession();
+
+          // Auto-refresh QR after expiry
+          setTimeout(async () => {
+            if (this.connectionState === "QR_READY" && !this.isConnected()) {
+              console.log(`🔄 [User ${this.userId}] QR expired — requesting fresh QR...`);
+              this.destroySocket();
+              this.isConnecting = false;
+              this.connectionState = "NOT_CONNECTED";
+              this.qrCodeDataUrl = null;
+              this.qrCodeString = null;
+              this.qrExpiresAt = null;
+              await this.updateDbSession();
+              // Re-init to get a fresh QR
+              if (!this.isLoggedOut && !this.userRequestedDisconnect) {
+                setTimeout(() => this.init().catch(() => {}), 500);
+              }
+            }
+          }, 62_000);
         }
 
-        // 2. Connection Closed
+        // Connection closed
         if (connection === "close") {
           const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
-          const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-          const isRegistered = !!(state.creds?.registered || state.creds?.me || this.hasSavedAuth());
-          const isRestartRequired = statusCode === DisconnectReason.restartRequired || statusCode === 515;
-          // 408 = QR code timed out without being scanned (not an error, just need new QR)
-          const isQrTimeout = statusCode === 408;
+          console.log(`⚠️ [User ${this.userId}] Socket closed: code=${statusCode}`);
+          this.clearTimers();
+          this.destroySocket();
+          this.isConnecting = false;
 
-          console.log(`⚠️ [User ${this.userId}] Socket closed: statusCode=${statusCode}, shouldReconnect=${shouldReconnect}, isRegistered=${isRegistered}, isQrTimeout=${isQrTimeout}`);
-
+          // Logged out from phone
           if (statusCode === DisconnectReason.loggedOut) {
-            // Unlinked from WhatsApp mobile app
             await this.logout();
             return;
           }
 
-          if (isRegistered || isRestartRequired) {
-            // Handshake finalization (515) or temporary network reconnect
-            this.connectionState = "RECONNECTING";
-            this.sock = null;
-            this.isConnecting = false;
+          // User intentionally disconnected — do NOT reconnect
+          if (this.userRequestedDisconnect) {
+            console.log(`🛑 [User ${this.userId}] User-requested disconnect — not reconnecting.`);
+            this.connectionState = "DISCONNECTED";
+            this.lastDisconnectedAt = new Date();
             await this.updateDbSession();
+            return;
+          }
 
-            this.reconnectAttempts++;
-            const backoffMs = Math.min(1000 * Math.pow(1.5, Math.min(this.reconnectAttempts, 5)), 10000);
-            this.reconnectTimeout = setTimeout(() => {
-              this.init().catch(() => {});
-            }, backoffMs);
-          } else if (isQrTimeout) {
-            // QR code expired (408) — reset cleanly to NOT_CONNECTED so user can request a new QR
-            console.log(`🔄 [User ${this.userId}] QR code expired (408). Resetting to NOT_CONNECTED.`);
+          // QR timed out without scan (408)
+          if (statusCode === 408) {
+            console.log(`🔄 [User ${this.userId}] QR expired (408) — resetting to NOT_CONNECTED.`);
             this.connectionState = "NOT_CONNECTED";
-            this.errorMessage = null;
             this.qrCodeString = null;
             this.qrCodeDataUrl = null;
             this.qrExpiresAt = null;
-            this.sock = null;
-            this.isConnecting = false;
+            this.errorMessage = null;
             await this.updateDbSession();
+            return;
+          }
+
+          // Transient error / restart required — reconnect with backoff
+          const isRegistered = !!(state.creds?.registered || state.creds?.me || this.hasSavedAuth());
+          const isRestart = statusCode === DisconnectReason.restartRequired || statusCode === 515;
+
+          if (isRegistered || isRestart) {
+            this.connectionState = "RECONNECTING";
+            this.reconnectAttempts++;
+            const backoffMs = Math.min(1_000 * Math.pow(1.5, Math.min(this.reconnectAttempts, 6)), 15_000);
+            console.log(`🔄 [User ${this.userId}] Reconnecting in ${backoffMs}ms (attempt ${this.reconnectAttempts})...`);
+            await this.updateDbSession();
+            this.reconnectTimeout = setTimeout(() => {
+              if (!this.isLoggedOut && !this.userRequestedDisconnect) {
+                this.init().catch(() => {});
+              }
+            }, backoffMs);
           } else {
             this.connectionState = "ERROR";
-            this.errorMessage = lastDisconnect?.error?.message || "Connection closed";
-            this.qrCodeString = null;
-            this.qrCodeDataUrl = null;
-            this.qrExpiresAt = null;
-            this.sock = null;
-            this.isConnecting = false;
+            this.errorMessage = lastDisconnect?.error?.message || "Connection closed unexpectedly";
             this.lastDisconnectedAt = new Date();
             await this.updateDbSession();
           }
         }
-        // 3. Connection Open / Connected
+
+        // Successfully connected / open
         else if (connection === "open") {
+          this.clearTimers();
           this.connectionState = "CONNECTED";
           this.errorMessage = null;
           this.qrCodeString = null;
@@ -350,36 +391,39 @@ export class UserWhatsAppSession {
             const rawId = this.sock.user.id;
             this.connectedPhone = rawId ? rawId.split(":")[0].replace(/[^0-9]/g, "") : null;
             this.connectedName = this.sock.user.name || "QistFlow User";
-            console.log(`\n🎉 [User ${this.userId}] WhatsApp Connected Successfully as: ${this.connectedName} (${this.connectedPhone})\n`);
+            console.log(`🎉 [User ${this.userId}] Connected as: ${this.connectedName} (${this.connectedPhone})`);
           }
 
           await this.updateDbSession();
         }
       });
     } catch (err: any) {
+      this.clearTimers();
+      this.destroySocket();
       this.isConnecting = false;
       this.connectionState = "ERROR";
       this.errorMessage = err.message || "Failed to initialize WhatsApp socket";
-      console.error(`❌ [User ${this.userId} Init Error]:`, err.message);
+      console.error(`❌ [User ${this.userId}] Init error:`, err.message);
       await this.updateDbSession();
     }
   }
 
-  /**
-   * Requests an 8-digit WhatsApp pairing code for phone-based pairing
-   */
+  // ── Pairing code ──────────────────────────────────────────────────────────
+
   public async requestPairingCode(phoneNumber: string): Promise<string> {
+    if (this.isLoggedOut) throw new Error("Session is logged out. Please reconnect.");
+
     let cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
     if (cleanPhone.startsWith("03") && cleanPhone.length === 11) {
       cleanPhone = "92" + cleanPhone.slice(1);
     } else if (cleanPhone.startsWith("3") && cleanPhone.length === 10) {
       cleanPhone = "92" + cleanPhone;
     }
-
     if (!cleanPhone || cleanPhone.length < 10) {
-      throw new Error("Invalid phone number. Must include country code without symbols (e.g. 923001234567).");
+      throw new Error("Invalid phone number. Must include country code (e.g. 923001234567).");
     }
 
+    // If already connected with saved auth, disconnect first
     if (this.hasSavedAuth()) {
       await this.disconnect();
     }
@@ -392,19 +436,16 @@ export class UserWhatsAppSession {
 
     await this.init();
 
-    // Wait for socket to be initialized and WebSocket handshake to begin
+    // Wait for socket to be ready
     let tries = 0;
     while (!this.sock && tries < 40) {
       await new Promise((r) => setTimeout(r, 250));
       tries++;
     }
+    if (!this.sock) throw new Error("WhatsApp socket initialization timed out.");
 
-    if (!this.sock) {
-      throw new Error("WhatsApp socket initialization timed out.");
-    }
-
-    // Wait 3.5 seconds for Baileys WebSocket handshake
-    await new Promise((r) => setTimeout(r, 3500));
+    // Wait for WebSocket handshake
+    await new Promise((r) => setTimeout(r, 3_500));
 
     try {
       const code = await this.sock.requestPairingCode(cleanPhone);
@@ -420,23 +461,12 @@ export class UserWhatsAppSession {
     }
   }
 
-  /**
-   * Temporary Disconnect: Closes socket cleanly, preserves saved auth credentials on disk
-   */
-  public async disconnect(): Promise<void> {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
+  // ── Disconnect: temporary — preserves credentials ─────────────────────────
 
-    try {
-      if (this.sock) {
-        this.sock.ev.removeAllListeners("connection.update");
-        this.sock.ev.removeAllListeners("creds.update");
-        this.sock.end(undefined);
-        this.sock = null;
-      }
-    } catch {}
+  public async disconnect(): Promise<void> {
+    this.userRequestedDisconnect = true;
+    this.clearTimers();
+    this.destroySocket();
 
     this.isConnecting = false;
     this.connectionState = "DISCONNECTED";
@@ -446,31 +476,24 @@ export class UserWhatsAppSession {
     this.pairingCode = null;
     this.lastDisconnectedAt = new Date();
     await this.updateDbSession();
-    console.log(`🛑 [User ${this.userId}] WhatsApp session disconnected temporarily (credentials preserved).`);
+    console.log(`🛑 [User ${this.userId}] Disconnected (credentials preserved).`);
   }
 
-  /**
-   * Complete Logout & Unlink: Closes socket, deletes auth directory, resets DB record to LOGGED_OUT
-   */
+  // ── Logout / Change Number: wipes all credentials and state ───────────────
+
   public async logout(): Promise<void> {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
+    this.isLoggedOut = true;
+    this.userRequestedDisconnect = true;
+    this.clearTimers();
 
     try {
       if (this.sock) {
-        try {
-          await this.sock.logout();
-        } catch {}
-        this.sock.ev.removeAllListeners("connection.update");
-        this.sock.ev.removeAllListeners("creds.update");
-        this.sock.end(undefined);
-        this.sock = null;
+        try { await this.sock.logout(); } catch {}
       }
     } catch {}
+    this.destroySocket();
 
-    // Delete session files
+    // Wipe session files from disk
     try {
       if (fs.existsSync(this.sessionDir)) {
         fs.rmSync(this.sessionDir, { recursive: true, force: true });
@@ -491,72 +514,53 @@ export class UserWhatsAppSession {
     this.errorMessage = null;
 
     await this.updateDbSession();
-    console.log(`🗑️ [User ${this.userId}] WhatsApp session logged out & credentials purged.`);
+    console.log(`🗑️ [User ${this.userId}] Logged out & credentials purged.`);
   }
 
-  /**
-   * Sends a message directly through this user's active WhatsApp socket
-   */
+  // ── Send message ──────────────────────────────────────────────────────────
+
   public async sendDirectMessage(recipientPhone: string, messageText: string): Promise<WhatsAppSendResult> {
     if (!this.isConnected() || !this.sock) {
       return {
         success: false,
-        error: `User WhatsApp is not connected (current state: ${this.connectionState})`,
+        error: `WhatsApp not connected for this user (state: ${this.connectionState})`,
         timestamp: new Date(),
       };
     }
 
     const cleanPhone = recipientPhone.replace(/[^0-9]/g, "");
     if (!cleanPhone || cleanPhone.length < 10) {
-      return {
-        success: false,
-        error: `Invalid recipient phone number: "${recipientPhone}"`,
-        timestamp: new Date(),
-      };
+      return { success: false, error: `Invalid phone: "${recipientPhone}"`, timestamp: new Date() };
     }
 
     const jid = `${cleanPhone}@s.whatsapp.net`;
-
     try {
-      // Check if recipient is on WhatsApp
       const [onWa] = await this.sock.onWhatsApp(cleanPhone).catch(() => [null]);
       if (onWa && !onWa.exists) {
         return {
           success: false,
-          error: `Phone number ${cleanPhone} is not registered on WhatsApp`,
+          error: `${cleanPhone} is not registered on WhatsApp`,
           timestamp: new Date(),
         };
       }
-
       const sentMsg = await this.sock.sendMessage(jid, { text: messageText });
       this.lastActiveAt = new Date();
-
-      return {
-        success: true,
-        messageId: sentMsg?.key?.id,
-        timestamp: new Date(),
-      };
+      return { success: true, messageId: sentMsg?.key?.id, timestamp: new Date() };
     } catch (err: any) {
-      console.error(`❌ [User ${this.userId} Send Error to ${cleanPhone}]:`, err.message);
-      return {
-        success: false,
-        error: err.message || "Failed to send WhatsApp message",
-        timestamp: new Date(),
-      };
+      console.error(`❌ [User ${this.userId}] Send error to ${cleanPhone}:`, err.message);
+      return { success: false, error: err.message || "Send failed", timestamp: new Date() };
     }
   }
 }
 
-/**
- * Singleton Multi-User WhatsApp Session Manager
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Singleton Multi-User WhatsApp Session Manager
+// ─────────────────────────────────────────────────────────────────────────────
+
 class WhatsAppSessionManager {
   private sessions = new Map<string, UserWhatsAppSession>();
   private connectionLocks = new Map<string, Promise<any>>();
 
-  /**
-   * Gets or instantiates a UserWhatsAppSession for a given userId
-   */
   public getSession(userId: string): UserWhatsAppSession {
     if (!this.sessions.has(userId)) {
       this.sessions.set(userId, new UserWhatsAppSession(userId));
@@ -565,14 +569,15 @@ class WhatsAppSessionManager {
   }
 
   /**
-   * Initiates connection for a specific user with race-condition lock protection
+   * Connect a user's WhatsApp with a mutex lock — guarantees single socket
    */
   public async connectUser(
     userId: string,
-    forceFreshQR: boolean = false
+    forceFresh: boolean = false
   ): Promise<{ status: WhatsAppConnectionState; qrCode: string | null }> {
     const existingLock = this.connectionLocks.get(userId);
     if (existingLock) {
+      console.log(`🔒 [User ${userId}] Connect already in progress — waiting for existing lock.`);
       return existingLock;
     }
 
@@ -580,26 +585,34 @@ class WhatsAppSessionManager {
       try {
         const session = this.getSession(userId);
 
-        if (session.isConnected()) {
+        if (session.isConnected() && !forceFresh) {
           const info = await session.getConnectedInfo();
           return { status: info.status, qrCode: null };
         }
 
-        if (forceFreshQR) {
+        if (forceFresh) {
+          // Full logout to wipe credentials
           await session.logout();
+          // Re-create session object (isLoggedOut is now true on old one)
+          this.sessions.set(userId, new UserWhatsAppSession(userId));
+          const fresh = this.sessions.get(userId)!;
+          await fresh.init();
+          await new Promise((r) => setTimeout(r, 500));
+          const info = await fresh.getConnectedInfo();
+          return { status: info.status, qrCode: info.qrCode || null };
         }
 
         await session.init();
 
-        // Wait up to 5 seconds to capture initial QR or Connection
+        // Wait up to 8s for QR or connection
         let elapsed = 0;
-        while (elapsed < 5000) {
+        while (elapsed < 8_000) {
           const info = await session.getConnectedInfo();
           if (info.status === "CONNECTED" || info.qrCode || info.status === "QR_READY") {
             return { status: info.status, qrCode: info.qrCode || null };
           }
-          await new Promise((r) => setTimeout(r, 300));
-          elapsed += 300;
+          await new Promise((r) => setTimeout(r, 400));
+          elapsed += 400;
         }
 
         const info = await session.getConnectedInfo();
@@ -621,7 +634,7 @@ class WhatsAppSessionManager {
   public async logoutUser(userId: string): Promise<void> {
     const session = this.getSession(userId);
     await session.logout();
-    this.sessions.delete(userId);
+    this.sessions.delete(userId); // Remove from map — next getSession creates fresh
   }
 
   public async getUserStatus(userId: string): Promise<WhatsAppConnectedInfo> {
@@ -640,24 +653,68 @@ class WhatsAppSessionManager {
   }
 
   /**
-   * Restores and automatically reconnects all users who have saved credentials on worker startup
+   * Check if a given phone number is already CONNECTED to another user.
+   * Used by the worker after a connection event to enforce number uniqueness.
+   * Returns the conflicting userId, or null if no conflict.
+   */
+  public async checkPhoneOwnershipConflict(
+    newOwnerUserId: string,
+    phone: string
+  ): Promise<string | null> {
+    try {
+      const existing = await prisma.whatsAppSession.findFirst({
+        where: {
+          connectedPhone: phone,
+          status: "CONNECTED",
+          userId: { not: newOwnerUserId },
+        },
+        select: { userId: true },
+      });
+      return existing?.userId || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Restore valid sessions on worker startup.
+   * Skips: "default" folders, LOGGED_OUT sessions, sessions without saved auth.
    */
   public async restoreAllActiveSessions(): Promise<void> {
-    console.log("🔍 [Session Manager] Restoring active user sessions from disk...");
+    console.log("🔍 [Session Manager] Restoring active sessions from disk...");
     const baseDir = path.join(process.cwd(), "whatsapp_sessions");
     if (!fs.existsSync(baseDir)) return;
 
+    // Get disk folders (each is a userId)
     const userDirs = fs.readdirSync(baseDir, { withFileTypes: true })
       .filter((d) => d.isDirectory() && d.name !== "default")
       .map((d) => d.name);
 
+    // Get DB statuses
+    const dbSessions = await prisma.whatsAppSession.findMany({
+      where: { userId: { in: userDirs } },
+      select: { userId: true, status: true },
+    }).catch(() => []);
+
+    const dbStatusMap = new Map(dbSessions.map((s) => [s.userId!, s.status]));
+
     for (const userId of userDirs) {
+      const dbStatus = dbStatusMap.get(userId);
+
+      // Never restore intentionally logged-out sessions
+      if (dbStatus === "LOGGED_OUT") {
+        console.log(`⏭️ [Session Manager] Skipping ${userId} — LOGGED_OUT.`);
+        continue;
+      }
+
       const session = this.getSession(userId);
       if (session.hasSavedAuth()) {
-        console.log(`🔄 [Session Manager] Restoring session for user: ${userId}`);
+        console.log(`🔄 [Session Manager] Restoring session for user: ${userId} (DB status: ${dbStatus || "unknown"})`);
         session.init().catch((err) => {
-          console.warn(`⚠️ [Session Manager] Could not auto-reconnect user ${userId}:`, err.message);
+          console.warn(`⚠️ [Session Manager] Could not restore ${userId}:`, err.message);
         });
+      } else {
+        console.log(`⏭️ [Session Manager] Skipping ${userId} — no saved credentials.`);
       }
     }
   }

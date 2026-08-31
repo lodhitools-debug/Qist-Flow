@@ -49,10 +49,13 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
 
   const fetchWAStatus = async () => {
     try {
-      const res = await fetch("/api/whatsapp/status");
+      const res = await fetch(`/api/whatsapp/status?t=${Date.now()}`, {
+        cache: "no-store",
+        headers: { Pragma: "no-cache" },
+      });
       if (res.ok) {
         const data = await res.json();
-        setWaStatus(data.status || "DISCONNECTED");
+        setWaStatus(data.status || "NOT_CONNECTED");
         setWaPhone(data.phone || "");
       }
     } catch {}
@@ -61,7 +64,8 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
   useEffect(() => {
     fetchSession();
     fetchWAStatus();
-    const interval = setInterval(fetchWAStatus, 15000);
+    // Poll every 30s — the connection page handles real-time updates
+    const interval = setInterval(fetchWAStatus, 30_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -152,7 +156,7 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
               "flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold border transition-all hover:scale-105 min-h-[36px]",
               waStatus === "CONNECTED"
                 ? "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-200 dark:border-emerald-700"
-                : waStatus === "CONNECTING" || waStatus === "QR_READY"
+                : waStatus === "CONNECTING" || waStatus === "QR_READY" || waStatus === "INIT_QR" || waStatus === "RECONNECTING"
                 ? "bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-700"
                 : "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-700"
             )}

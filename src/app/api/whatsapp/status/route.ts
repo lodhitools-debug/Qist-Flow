@@ -9,46 +9,39 @@ export async function GET(req: NextRequest) {
   const { user, errorResponse } = await requireAuth(req);
   if (errorResponse) return errorResponse;
 
-  const targetUserId = user.userId || (user as any).id || (user as any).sub;
-  if (!targetUserId) {
-    return NextResponse.json({ success: false, error: "User session invalid. Please log in again." }, { status: 401 });
+  const userId = user.userId;
+  if (!userId) {
+    return NextResponse.json({ success: false, error: "Session expired. Please log in again." }, { status: 401 });
   }
 
   try {
     const dbSession = await prisma.whatsAppSession.findUnique({
-      where: { userId: targetUserId },
+      where: { userId },
     }).catch(() => null);
 
-    let queuedCount = 0;
-    let sendingCount = 0;
-    let sentToday = 0;
-    let failedToday = 0;
-
+    // Queue stats scoped to this user
+    let queueStats = { queued: 0, sending: 0, sentToday: 0, failedToday: 0 };
     try {
-      queuedCount = await prisma.messageQueue.count({
-        where: { senderUserId: user.userId, status: "QUEUED" },
-      }).catch(() => 0);
-      sendingCount = await prisma.messageQueue.count({
-        where: { senderUserId: user.userId, status: "SENDING" },
-      }).catch(() => 0);
-      sentToday = await prisma.messageLog.count({
-        where: { sentAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
-      }).catch(() => 0);
-      failedToday = await prisma.messageLog.count({
-        where: { status: "FAILED", sentAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
-      }).catch(() => 0);
+      const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
+      const [queued, sending, sentToday, failedToday] = await Promise.all([
+        prisma.messageQueue.count({ where: { senderUserId: userId, status: "QUEUED" } }),
+        prisma.messageQueue.count({ where: { senderUserId: userId, status: "SENDING" } }),
+        prisma.messageLog.count({ where: { sentAt: { gte: todayStart } } }),
+        prisma.messageLog.count({ where: { status: "FAILED", sentAt: { gte: todayStart } } }),
+      ]);
+      queueStats = { queued, sending, sentToday, failedToday };
     } catch {}
 
     const isConnected = dbSession?.status === "CONNECTED" && !!dbSession?.connectedPhone;
     let computedStatus = isConnected ? "CONNECTED" : (dbSession?.status || "NOT_CONNECTED");
 
-    // Check if QR code has expired
+    // Clear expired QR from DB
     let qrCode = dbSession?.qrCode || null;
     if (dbSession?.qrExpiresAt && new Date() > dbSession.qrExpiresAt && computedStatus === "QR_READY") {
       qrCode = null;
       computedStatus = "NOT_CONNECTED";
       prisma.whatsAppSession.update({
-        where: { userId: targetUserId },
+        where: { userId },
         data: { qrCode: null, status: "NOT_CONNECTED" },
       }).catch(() => {});
     }
@@ -56,8 +49,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        userId: targetUserId,
-        userName: user.name,
         status: computedStatus,
         qrCode: isConnected ? null : qrCode,
         qrExpiresAt: dbSession?.qrExpiresAt || null,
@@ -66,40 +57,25 @@ export async function GET(req: NextRequest) {
         name: dbSession?.connectedName || null,
         connectedAt: dbSession?.connectedAt || null,
         lastDisconnectedAt: dbSession?.lastDisconnectedAt || null,
-        lastActiveAt: dbSession?.lastActiveAt || null,
         errorMessage: dbSession?.errorMessage || null,
-        queueStats: {
-          queued: queuedCount,
-          sending: sendingCount,
-          sentToday,
-          failedToday,
-        },
+        queueStats,
       },
       {
         headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
           Pragma: "no-cache",
           Expires: "0",
         },
       }
     );
   } catch (error: any) {
-    console.error(`[WhatsApp Status Error] userId=${user.userId}:`, error.message);
+    console.error(`[WhatsApp Status] userId=${userId}:`, error.message);
     return NextResponse.json(
-      {
-        success: false,
-        error: "WHATSAPP_STATUS_ERROR",
-        message: error.message || "Failed to retrieve WhatsApp status",
-        status: "ERROR",
-        qrCode: null,
-      },
+      { success: false, status: "ERROR", error: "Failed to fetch status. Please refresh." },
       {
         status: 500,
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-        },
+        headers: { "Cache-Control": "no-store" },
       }
     );
   }
 }
-

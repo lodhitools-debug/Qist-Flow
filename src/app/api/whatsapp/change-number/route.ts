@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
     const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
     const secret = process.env.WHATSAPP_SERVICE_SECRET || "";
 
+    // 1. Tell worker to wipe credentials and close socket
     if (serviceUrl) {
       try {
         const controller = new AbortController();
@@ -37,13 +38,13 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
-    // Delete local session folder if present
+    // 2. Delete local session folder if it exists on this server
     try {
       const dir = path.join(process.cwd(), "whatsapp_sessions", userId);
       if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
     } catch {}
 
-    // Reset DB — full credential wipe
+    // 3. Reset DB to LOGGED_OUT — clears all phone ownership
     await prisma.whatsAppSession.upsert({
       where: { userId },
       update: {
@@ -71,18 +72,18 @@ export async function POST(req: NextRequest) {
 
     await logActivity({
       userId,
-      action: "WHATSAPP_LOGOUT_REMOVE",
+      action: "WHATSAPP_CHANGE_NUMBER",
     }).catch(() => {});
 
     return NextResponse.json({
       success: true,
       status: "LOGGED_OUT",
-      message: "WhatsApp account fully unlinked. You will need to scan a fresh QR code to reconnect.",
+      message: "WhatsApp account removed. You can now connect a new WhatsApp number.",
     });
   } catch (error: any) {
-    console.error(`[WhatsApp Logout] userId=${userId}:`, error.message);
+    console.error(`[WhatsApp Change Number] userId=${userId}:`, error.message);
     return NextResponse.json(
-      { success: false, error: "Failed to logout. Please try again." },
+      { success: false, error: "Failed to remove WhatsApp account. Please try again." },
       { status: 500 }
     );
   }

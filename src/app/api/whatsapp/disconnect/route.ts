@@ -9,33 +9,36 @@ export async function POST(req: NextRequest) {
   const { user, errorResponse } = await requireAuth(req);
   if (errorResponse) return errorResponse;
 
-  const targetUserId = user.userId || (user as any).id || (user as any).sub;
-  if (!targetUserId) {
-    return NextResponse.json({ success: false, error: "User session invalid. Please log in again." }, { status: 401 });
+  const userId = user.userId;
+  if (!userId) {
+    return NextResponse.json({ success: false, error: "Session expired. Please log in again." }, { status: 401 });
   }
 
   try {
     const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
+    const secret = process.env.WHATSAPP_SERVICE_SECRET || "";
 
-    // 1. If AlwaysData remote worker is configured, notify it with userId
+    // 1. Tell the worker to close the socket immediately
     if (serviceUrl) {
       try {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 5_000);
         await fetch(`${serviceUrl}/api/wa/disconnect`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "",
+            "x-whatsapp-secret": secret,
           },
-          body: JSON.stringify({ userId: targetUserId }),
-        });
-      } catch (err: any) {
-        console.warn(`[AlwaysData Worker Disconnect Warning for ${targetUserId}]:`, err.message);
-      }
+          body: JSON.stringify({ userId }),
+          signal: controller.signal,
+        }).catch(() => {});
+        clearTimeout(t);
+      } catch {}
     }
 
-    // 2. Set DB session to DISCONNECTED for this user (keeps saved auth on disk)
+    // 2. Update DB — preserve credentials (DISCONNECTED, not LOGGED_OUT)
     await prisma.whatsAppSession.upsert({
-      where: { userId: targetUserId },
+      where: { userId },
       update: {
         status: "DISCONNECTED",
         qrCode: null,
@@ -46,7 +49,7 @@ export async function POST(req: NextRequest) {
         updatedAt: new Date(),
       },
       create: {
-        userId: targetUserId,
+        userId,
         status: "DISCONNECTED",
         qrCode: null,
         pairingCode: null,
@@ -55,26 +58,20 @@ export async function POST(req: NextRequest) {
     });
 
     await logActivity({
-      userId: targetUserId,
+      userId,
       action: "WHATSAPP_DISCONNECT",
-      details: { serviceUrl: serviceUrl || "Supabase DB sync" },
     }).catch(() => {});
 
     return NextResponse.json({
       success: true,
       status: "DISCONNECTED",
-      message: "WhatsApp session disconnected temporarily (saved credentials preserved).",
+      message: "WhatsApp disconnected. Your session is preserved — reconnect any time without scanning a new QR.",
     });
   } catch (error: any) {
-    console.error(`[WhatsApp Disconnect Error] userId=${targetUserId}:`, error.message);
+    console.error(`[WhatsApp Disconnect] userId=${userId}:`, error.message);
     return NextResponse.json(
-      {
-        success: false,
-        error: "WHATSAPP_DISCONNECT_FAILED",
-        message: error.message || "Failed to disconnect WhatsApp session",
-      },
+      { success: false, error: "Failed to disconnect. Please try again." },
       { status: 500 }
     );
   }
 }
-

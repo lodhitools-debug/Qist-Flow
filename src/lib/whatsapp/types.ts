@@ -1,6 +1,7 @@
 export type WhatsAppConnectionState =
   | "NOT_CONNECTED"
   | "CONNECTING"
+  | "INIT_QR"      // Fresh QR requested (before socket is created)
   | "QR_READY"
   | "PAIRING"
   | "CONNECTED"
@@ -8,7 +9,7 @@ export type WhatsAppConnectionState =
   | "RECONNECTING"
   | "LOGGED_OUT"
   | "ERROR"
-  | "FAILED"; // Legacy alias for ERROR — kept for backward compat
+  | "FAILED"; // Legacy alias for ERROR
 
 export interface WhatsAppConnectedInfo {
   userId?: string;

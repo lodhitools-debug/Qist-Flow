@@ -9,33 +9,34 @@ export async function POST(req: NextRequest) {
   const { user, errorResponse } = await requireAuth(req);
   if (errorResponse) return errorResponse;
 
+  const userId = user.userId;
+  if (!userId) {
+    return NextResponse.json({ success: false, error: "Session expired. Please log in again." }, { status: 401 });
+  }
+
   try {
     const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
-    let workerConnected = false;
+    const secret = process.env.WHATSAPP_SERVICE_SECRET || "";
 
-    const targetUserId = user.userId || (user as any).id || (user as any).sub;
-    if (!targetUserId) {
-      return NextResponse.json({ success: false, error: "User session invalid. Please log in again." }, { status: 401 });
-    }
-
-    // 1. Fetch current user session
-    const currentSession = await prisma.whatsAppSession.findUnique({
-      where: { userId: targetUserId },
+    // Check if already connected — short-circuit
+    const current = await prisma.whatsAppSession.findUnique({
+      where: { userId },
+      select: { status: true, connectedPhone: true, connectedName: true },
     }).catch(() => null);
 
-    if (currentSession?.status === "CONNECTED" && currentSession?.connectedPhone) {
+    if (current?.status === "CONNECTED" && current?.connectedPhone) {
       return NextResponse.json({
         success: true,
         status: "CONNECTED",
-        phone: currentSession.connectedPhone,
-        name: currentSession.connectedName,
+        phone: current.connectedPhone,
+        name: current.connectedName,
         message: "WhatsApp is already connected.",
       });
     }
 
-    // 2. Update DB session status to INIT_QR for worker polling loop
-    const updatedSession = await prisma.whatsAppSession.upsert({
-      where: { userId: targetUserId },
+    // Set DB to INIT_QR so the worker's DB-watch loop or direct call picks it up
+    await prisma.whatsAppSession.upsert({
+      where: { userId },
       update: {
         status: "INIT_QR",
         errorMessage: null,
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
         updatedAt: new Date(),
       },
       create: {
-        userId: targetUserId,
+        userId,
         status: "INIT_QR",
         errorMessage: null,
         pairingCode: null,
@@ -55,28 +56,40 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Notify the AlwaysData worker directly so it does not have to wait for the 2s poll
+    if (serviceUrl) {
+      try {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 5_000);
+        await fetch(`${serviceUrl}/api/wa/connect`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-whatsapp-secret": secret,
+          },
+          body: JSON.stringify({ userId, forceFresh: true }),
+          signal: controller.signal,
+        }).catch(() => {});
+        clearTimeout(t);
+      } catch {}
+    }
+
     await logActivity({
-      userId: targetUserId,
+      userId,
       action: "WHATSAPP_CONNECT_INIT",
-      details: { serviceUrl: serviceUrl || "Supabase DB sync", workerConnected },
+      details: { worker: !!serviceUrl },
     }).catch(() => {});
 
     return NextResponse.json({
       success: true,
-      status: updatedSession.status,
-      qrCode: updatedSession.qrCode,
-      message: "WhatsApp session initializing. Awaiting QR code...",
+      status: "INIT_QR",
+      message: "Connecting to WhatsApp... QR code will appear shortly.",
     });
   } catch (error: any) {
-    console.error(`[WhatsApp Connect Error] userId=${user.userId}:`, error.message);
+    console.error(`[WhatsApp Connect] userId=${userId}:`, error.message);
     return NextResponse.json(
-      {
-        success: false,
-        error: "WHATSAPP_CONNECT_FAILED",
-        message: error.message || "Failed to initialize WhatsApp connection",
-      },
+      { success: false, error: "Failed to start WhatsApp connection. Please try again." },
       { status: 500 }
     );
   }
 }
-

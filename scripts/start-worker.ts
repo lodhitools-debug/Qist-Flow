@@ -11,13 +11,12 @@ try {
 
 process.env.IS_WORKER = "true";
 
-// Crash-proof global exception handlers (Never let worker die from network/socket timeouts)
+// Crash-proof global exception handlers
 process.on("uncaughtException", (err) => {
-  console.warn("⚠️ [Worker Handled UncaughtException]:", err.message);
+  console.warn("⚠️ [Worker UncaughtException]:", err.message);
 });
-
 process.on("unhandledRejection", (reason: any) => {
-  console.warn("⚠️ [Worker Handled UnhandledRejection]:", reason?.message || reason);
+  console.warn("⚠️ [Worker UnhandledRejection]:", reason?.message || reason);
 });
 
 import http from "http";
@@ -35,7 +34,12 @@ const SERVICE_SECRET = process.env.WHATSAPP_SERVICE_SECRET || "";
 let isQueueLoopRunning = false;
 let lastHeartbeat = new Date();
 let lastSuccessfulMessageAt: Date | null = null;
-let lastProcessedCount = 0;
+
+// Per-user action cooldowns to prevent rapid repeated operations
+const lastActionPerUser = new Map<string, number>();
+const ACTION_COOLDOWN_MS = 5_000;
+
+// ── Message Queue Processing ──────────────────────────────────────────────────
 
 async function runQueueStep() {
   if (isQueueLoopRunning) return;
@@ -44,381 +48,336 @@ async function runQueueStep() {
 
   try {
     const res = await processQueueWorker(10);
-    lastProcessedCount = res.processed;
     if (res.sent > 0) {
       lastSuccessfulMessageAt = new Date();
+      console.log(`[Queue] Processed: ${res.processed} | Sent: ${res.sent} | Failed: ${res.failed}`);
     }
-
-    if (res.processed > 0) {
-      console.log(`[Fast Queue Worker] Processed: ${res.processed} | Sent: ${res.sent} | Failed: ${res.failed}`);
-      // If messages were processed, poll again quickly in 1 second
-      setTimeout(runQueueStep, 1000);
-    } else {
-      // Queue is empty, poll again in 3 seconds
-      setTimeout(runQueueStep, 3000);
-    }
+    setTimeout(runQueueStep, res.processed > 0 ? 1_000 : 3_000);
   } catch (err) {
-    console.error("[Queue Worker Error]:", err);
-    setTimeout(runQueueStep, 4000);
+    console.error("[Queue Error]:", err);
+    setTimeout(runQueueStep, 4_000);
   } finally {
     isQueueLoopRunning = false;
   }
 }
 
-// Track per-user last action timestamps to avoid duplicate actions
-const lastConnectInitPerUser = new Map<string, number>();
+// ── DB Watch Loop — sync worker state with Vercel DB commands ─────────────────
+
+async function runDbWatchLoop() {
+  try {
+    // Fetch only real user sessions (exclude null userId rows)
+    const allSessions = await prisma.whatsAppSession.findMany({
+      where: { userId: { not: null } },
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        requestedPhone: true,
+        pairingCode: true,
+        qrCode: true,
+      },
+    });
+
+    for (const session of allSessions) {
+      const userId = session.userId!;
+
+      // Safety: skip empty/default userIds
+      if (!userId || userId === "default") continue;
+
+      const userSession = waSessionManager.getSession(userId);
+      const now = Date.now();
+      const lastAction = lastActionPerUser.get(userId) || 0;
+      const onCooldown = now - lastAction < ACTION_COOLDOWN_MS;
+
+      try {
+        // 1. Disconnect request from Vercel
+        if (
+          session.status === "DISCONNECTED" &&
+          userSession.getConnectionState() !== "DISCONNECTED" &&
+          userSession.getConnectionState() !== "LOGGED_OUT"
+        ) {
+          console.log(`🛑 [Worker] Disconnecting user: ${userId}`);
+          lastActionPerUser.set(userId, now);
+          await userSession.disconnect().catch(() => {});
+        }
+
+        // 2. Logout / Change Number request
+        else if (
+          session.status === "LOGGED_OUT" &&
+          userSession.getConnectionState() !== "LOGGED_OUT" &&
+          !onCooldown
+        ) {
+          console.log(`🗑️ [Worker] Logging out user: ${userId}`);
+          lastActionPerUser.set(userId, now);
+          await waSessionManager.logoutUser(userId).catch(() => {});
+        }
+
+        // 3. Pairing code requested — DB sets status=PAIRING with requestedPhone
+        else if (
+          session.status === "PAIRING" &&
+          session.requestedPhone &&
+          !session.pairingCode &&
+          !onCooldown
+        ) {
+          console.log(`📲 [Worker] Pairing code requested for ${userId} → ${session.requestedPhone}`);
+          lastActionPerUser.set(userId, now);
+          try {
+            const code = await waSessionManager.requestPairingCode(userId, session.requestedPhone);
+            await prisma.whatsAppSession.update({
+              where: { userId },
+              data: { pairingCode: code, status: "PAIRING", errorMessage: null },
+            }).catch(() => {});
+          } catch (err: any) {
+            console.error(`❌ [Worker] Pairing code failed for ${userId}:`, err.message);
+            await prisma.whatsAppSession.update({
+              where: { userId },
+              data: { status: "ERROR", errorMessage: "Pairing code generation failed. Please try again." },
+            }).catch(() => {});
+          }
+        }
+
+        // 4. INIT_QR: fresh QR requested — always force fresh (wipe old creds)
+        else if (
+          session.status === "INIT_QR" &&
+          !session.qrCode &&
+          !userSession.isConnected() &&
+          !onCooldown
+        ) {
+          console.log(`🔄 [Worker] Fresh QR requested for ${userId}`);
+          lastActionPerUser.set(userId, now);
+          // connectUser with forceFresh=true wipes old creds and creates a brand-new socket
+          waSessionManager.connectUser(userId, true).catch((err) => {
+            console.error(`❌ [Worker] QR connect failed for ${userId}:`, err.message);
+          });
+        }
+
+        // 5. CONNECTING: reconnect with saved credentials (no new QR)
+        else if (
+          session.status === "CONNECTING" &&
+          !userSession.isConnected() &&
+          userSession.getConnectionState() !== "CONNECTING" &&
+          userSession.getConnectionState() !== "RECONNECTING" &&
+          !onCooldown
+        ) {
+          if (userSession.hasSavedAuth()) {
+            console.log(`🔄 [Worker] Reconnecting with saved creds for ${userId}`);
+            lastActionPerUser.set(userId, now);
+            waSessionManager.connectUser(userId, false).catch((err) => {
+              console.error(`❌ [Worker] Reconnect failed for ${userId}:`, err.message);
+            });
+          }
+        }
+
+        // 6. Session just became CONNECTED — check phone number uniqueness
+        else if (session.status === "CONNECTED" && session.requestedPhone === null) {
+          const inMemoryInfo = await userSession.getConnectedInfo();
+          if (inMemoryInfo.status === "CONNECTED" && inMemoryInfo.phone) {
+            const conflictUserId = await waSessionManager.checkPhoneOwnershipConflict(userId, inMemoryInfo.phone);
+            if (conflictUserId) {
+              console.warn(`🚫 [Worker] Phone ${inMemoryInfo.phone} already owned by ${conflictUserId}. Disconnecting ${userId}.`);
+              await waSessionManager.logoutUser(userId);
+              await prisma.whatsAppSession.update({
+                where: { userId },
+                data: {
+                  status: "ERROR",
+                  errorMessage: "This WhatsApp number is already connected to another QistFlow user.",
+                  connectedPhone: null,
+                },
+              }).catch(() => {});
+            }
+          }
+        }
+      } catch (err: any) {
+        // Per-user errors should not crash the entire loop
+        console.warn(`⚠️ [Worker DB Loop] Error for user ${userId}:`, err.message);
+      }
+    }
+  } catch (err: any) {
+    console.warn("⚠️ [Worker DB Loop] Query error:", err.message);
+  }
+}
+
+// ── HTTP Microservice ─────────────────────────────────────────────────────────
+
+function readBody(req: http.IncomingMessage): Promise<any> {
+  return new Promise((resolve) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try { resolve(JSON.parse(body || "{}")); }
+      catch { resolve({}); }
+    });
+  });
+}
+
+function jsonRes(res: http.ServerResponse, status: number, data: object) {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(data));
+}
+
+// ── Worker Bootstrap ──────────────────────────────────────────────────────────
 
 async function startWorker() {
   console.log("==========================================");
-  console.log("🚀 QistFlow WhatsApp & Reminder Background Worker");
+  console.log("🚀 QistFlow WhatsApp Background Worker");
   console.log("   Multi-User Isolated Session Architecture");
   console.log("==========================================");
 
-  // 1. Restore all previously active WhatsApp sessions from disk
-  console.log("📱 Restoring active WhatsApp sessions from disk...");
+  // 1. Restore previously-connected sessions (skips LOGGED_OUT)
+  console.log("📱 Restoring active WhatsApp sessions...");
   await waSessionManager.restoreAllActiveSessions().catch((err) => {
-    console.warn("⚠️ Session restore partial failure:", err.message);
+    console.warn("⚠️ Session restore error:", err.message);
   });
 
-  // 2. Start Adaptive Queue Processing Loop (1-3s polling)
-  console.log("⚡ Starting Fast Adaptive Queue Polling Loop...");
-  setTimeout(runQueueStep, 1500);
+  // 2. Queue processing loop
+  console.log("⚡ Starting Queue Processing Loop...");
+  setTimeout(runQueueStep, 1_500);
 
-  // 3. Schedule Reminder Rule Evaluation (Every 15 minutes)
+  // 3. Reminder scheduler (every 15 minutes)
   setInterval(async () => {
     try {
-      console.log(`[Reminder Scheduler] Evaluating active reminder rules...`);
       const res = await runReminderScheduler(true);
       if (res.enqueued > 0) {
-        console.log(`[Reminder Scheduler] Enqueued ${res.enqueued} reminder(s) | Skipped ${res.duplicatesSkipped} duplicates`);
+        console.log(`[Reminders] Enqueued ${res.enqueued} | Skipped ${res.duplicatesSkipped} duplicates`);
         runQueueStep();
       }
     } catch (err) {
       console.error("[Reminder Scheduler Error]:", err);
     }
-  }, 1000 * 60 * 15);
+  }, 1_000 * 60 * 15);
 
-  // 4. Multi-User DB Watcher - polls every 2 seconds for connect/disconnect/logout requests from all users
-  setInterval(async () => {
-    try {
-      // Query ALL user sessions from DB (both user-isolated sessions and legacy "default" session)
-      const allSessions = await prisma.whatsAppSession.findMany({
-        select: {
-          id: true,
-          userId: true,
-          status: true,
-          requestedPhone: true,
-          pairingCode: true,
-          qrCode: true,
-        },
-      });
+  // 4. DB Watch Loop (every 2 seconds)
+  setInterval(runDbWatchLoop, 2_000);
 
-      for (const session of allSessions) {
-        const userId = session.userId || "default";
-        const userSession = waSessionManager.getSession(userId);
-        const now = Date.now();
-        const lastInit = lastConnectInitPerUser.get(userId) || 0;
-
-        try {
-          // 1. Handle DISCONNECTED request from Vercel/DB
-          if (
-            session.status === "DISCONNECTED" &&
-            (userSession.isConnected() || userSession.getConnectionState() !== "DISCONNECTED")
-          ) {
-            console.log(`🛑 [Worker] Session ${session.id} (user: ${userId}): Disconnect detected from DB.`);
-            await userSession.disconnect().catch(() => {});
-          }
-
-          // 2. Handle LOGGED_OUT / DELETE request from Vercel/DB
-          else if (session.status === "LOGGED_OUT" && userSession.getConnectionState() !== "LOGGED_OUT") {
-            console.log(`🗑️ [Worker] Session ${session.id} (user: ${userId}): Logout detected from DB. Wiping credentials...`);
-            await waSessionManager.logoutUser(userId).catch(() => {});
-          }
-
-          // 3. Handle PAIRING_REQUESTED / PAIRING - generate pairing code for user
-          else if (
-            (session.status === "PAIRING_REQUESTED" || session.status === "PAIRING") &&
-            session.requestedPhone &&
-            !session.pairingCode
-          ) {
-            if (now - lastInit > 4000) {
-              lastConnectInitPerUser.set(userId, now);
-              console.log(`📲 [Worker] Session ${session.id} (user: ${userId}): Pairing code requested for ${session.requestedPhone}...`);
-              try {
-                const code = await waSessionManager.requestPairingCode(userId, session.requestedPhone);
-                console.log(`✅ [Worker] Session ${session.id} (user: ${userId}): Pairing code generated: ${code}`);
-                const updateData = {
-                  status: "PAIRING",
-                  pairingCode: code,
-                  errorMessage: null,
-                };
-                if (session.userId) {
-                  await prisma.whatsAppSession.update({ where: { userId: session.userId }, data: updateData }).catch(() => {});
-                }
-                await prisma.whatsAppSession.update({ where: { id: session.id }, data: updateData }).catch(() => {});
-                await prisma.whatsAppSession.update({ where: { id: "default" }, data: updateData }).catch(() => {});
-              } catch (err: any) {
-                console.error(`❌ [Worker] Session ${session.id} (user: ${userId}): Pairing code failed:`, err.message);
-                const errorData = { status: "ERROR", errorMessage: err.message };
-                if (session.userId) {
-                  await prisma.whatsAppSession.update({ where: { userId: session.userId }, data: errorData }).catch(() => {});
-                }
-                await prisma.whatsAppSession.update({ where: { id: session.id }, data: errorData }).catch(() => {});
-              }
-            }
-          }
-
-          // 4. Handle CONNECTING / INIT_QR request - generate QR code for user
-          else if (
-            (session.status === "CONNECTING" || session.status === "INIT_QR") &&
-            !session.qrCode &&
-            !userSession.isConnected()
-          ) {
-            if (now - lastInit > 3000) {
-              lastConnectInitPerUser.set(userId, now);
-              if (session.status === "INIT_QR") {
-                console.log(`🔄 [Worker] Session ${session.id} (user: ${userId}): Fresh QR requested. Generating QR...`);
-                await waSessionManager.connectUser(userId, true).catch((err) => {
-                  console.error(`❌ [Worker] Session ${session.id} (user: ${userId}): QR connect error:`, err.message);
-                });
-              } else if (userSession.hasSavedAuth()) {
-                console.log(`🔄 [Worker] Session ${session.id} (user: ${userId}): Saved creds found. Reconnecting without QR...`);
-                await userSession.init().catch((err) => {
-                  console.error(`❌ [Worker] Session ${session.id} (user: ${userId}): Reconnect error:`, err.message);
-                });
-              } else {
-                console.log(`🔄 [Worker] Session ${session.id} (user: ${userId}): Fresh connect requested. Generating QR...`);
-                await waSessionManager.connectUser(userId, false).catch((err) => {
-                  console.error(`❌ [Worker] Session ${session.id} (user: ${userId}): QR connect error:`, err.message);
-                });
-              }
-            }
-          }
-        } catch (userErr: any) {
-          console.warn(`⚠️ [Worker] Error handling session ${session.id} for user ${userId}:`, userErr.message);
-        }
-      }
-    } catch (err) {
-      // Silently ignore DB errors in watch loop
-    }
-  }, 2000);
-
-  // 5. HTTP API Microservice for Vercel ↔ Worker communication
+  // 5. HTTP Microservice
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     const pathname = url.pathname;
 
-    // Health check endpoint
+    // ── Health check (no auth required) ─────────────────────────────────────
     if (pathname === "/health" || pathname === "/api/health") {
       let queueStats = { queued: 0, sending: 0, sentToday: 0, failedToday: 0 };
-      let activeSessions: { userId: string; status: string; phone: string | null }[] = [];
-
+      let sessionCount = 0;
       try {
         queueStats = await getQueueStats();
-        const sessionMap = waSessionManager.getAllActiveSessions();
-        for (const [uid, session] of Array.from(sessionMap.entries())) {
-          const info = await session.getConnectedInfo();
-          activeSessions.push({ userId: uid, status: info.status, phone: info.phone ?? null });
-        }
+        sessionCount = waSessionManager.getAllActiveSessions().size;
       } catch {}
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          status: "healthy",
-          worker: "qistflow-background-worker",
-          architecture: "multi-user-isolated",
-          uptimeSeconds: Math.floor(process.uptime()),
-          timestamp: new Date().toISOString(),
-          lastHeartbeat: lastHeartbeat.toISOString(),
-          lastSuccessfulMessageAt: lastSuccessfulMessageAt ? lastSuccessfulMessageAt.toISOString() : null,
-          activeSessions,
-          queue: queueStats,
-        })
-      );
-      return;
+      return jsonRes(res, 200, {
+        status: "healthy",
+        uptimeSeconds: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString(),
+        lastHeartbeat: lastHeartbeat.toISOString(),
+        lastSuccessfulMessageAt: lastSuccessfulMessageAt?.toISOString() || null,
+        activeSessions: sessionCount,
+        queue: queueStats,
+      });
     }
 
-    // Secure webhook endpoints (Protected by secret token)
+    // ── All other endpoints require the service secret ───────────────────────
     const clientSecret = req.headers["x-whatsapp-secret"];
     if (SERVICE_SECRET && clientSecret !== SERVICE_SECRET) {
-      res.writeHead(401, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ success: false, error: "Unauthorized" }));
-      return;
+      return jsonRes(res, 401, { success: false, error: "Unauthorized" });
     }
 
-    // Helper to read JSON body
-    const readBody = (): Promise<any> =>
-      new Promise((resolve) => {
-        let body = "";
-        req.on("data", (chunk) => (body += chunk));
-        req.on("end", () => {
-          try {
-            resolve(JSON.parse(body || "{}"));
-          } catch {
-            resolve({});
-          }
-        });
-      });
-
-    // POST /api/wa/send - Send message through a specific user's WhatsApp
+    // POST /api/wa/send
     if (req.method === "POST" && pathname === "/api/wa/send") {
       try {
-        const { userId, phone, message } = await readBody();
-        if (!phone || !message) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: false, error: "phone and message required" }));
-          return;
+        const { userId, phone, message } = await readBody(req);
+        if (!userId || !phone || !message) {
+          return jsonRes(res, 400, { success: false, error: "userId, phone and message required" });
         }
-
-        let sendResult;
-        if (userId) {
-          sendResult = await waSessionManager.sendMessage(userId, {
-            recipientPhone: phone,
-            messageText: message,
-          });
-        } else {
-          // Fallback: find first connected session
-          const sessions = waSessionManager.getAllActiveSessions();
-          let sent = false;
-          for (const [uid, session] of Array.from(sessions.entries())) {
-            if (session.isConnected()) {
-              sendResult = await session.sendDirectMessage(phone, message);
-              sent = true;
-              break;
-            }
-          }
-          if (!sent) {
-            sendResult = { success: false, error: "No active WhatsApp session found", timestamp: new Date() };
-          }
-        }
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(sendResult));
+        const result = await waSessionManager.sendMessage(userId, {
+          recipientPhone: phone,
+          messageText: message,
+        });
+        return jsonRes(res, 200, result);
       } catch (err: any) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: false, error: err.message }));
+        return jsonRes(res, 500, { success: false, error: err.message });
       }
-      return;
     }
 
-    // POST /api/wa/connect - Connect a specific user's WhatsApp (generate QR)
+    // POST /api/wa/connect — triggers QR generation
     if (req.method === "POST" && pathname === "/api/wa/connect") {
       try {
-        const { userId } = await readBody();
-        if (!userId) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: false, error: "userId required" }));
-          return;
-        }
-        const result = await waSessionManager.connectUser(userId, false);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, ...result }));
+        const { userId, forceFresh } = await readBody(req);
+        if (!userId) return jsonRes(res, 400, { success: false, error: "userId required" });
+        const result = await waSessionManager.connectUser(userId, !!forceFresh);
+        return jsonRes(res, 200, { success: true, ...result });
       } catch (err: any) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: false, error: err.message }));
+        return jsonRes(res, 500, { success: false, error: err.message });
       }
-      return;
     }
 
-    // POST /api/wa/pairing-code - Request pairing code for a specific user
+    // POST /api/wa/pairing-code
     if (req.method === "POST" && pathname === "/api/wa/pairing-code") {
       try {
-        const { userId, phone } = await readBody();
+        const { userId, phone } = await readBody(req);
         if (!userId || !phone) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: false, error: "userId and phone required" }));
-          return;
+          return jsonRes(res, 400, { success: false, error: "userId and phone required" });
         }
         const code = await waSessionManager.requestPairingCode(userId, phone);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, pairingCode: code }));
+        return jsonRes(res, 200, { success: true, pairingCode: code });
       } catch (err: any) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: false, error: err.message }));
+        return jsonRes(res, 500, { success: false, error: err.message });
       }
-      return;
     }
 
-    // POST /api/wa/disconnect - Temporarily disconnect a user's session (keep credentials)
+    // POST /api/wa/disconnect
     if (req.method === "POST" && pathname === "/api/wa/disconnect") {
       try {
-        const { userId } = await readBody();
-        if (!userId) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: false, error: "userId required" }));
-          return;
-        }
+        const { userId } = await readBody(req);
+        if (!userId) return jsonRes(res, 400, { success: false, error: "userId required" });
         await waSessionManager.disconnectUser(userId);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, message: `User ${userId} disconnected (credentials preserved)` }));
+        return jsonRes(res, 200, { success: true });
       } catch (err: any) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: false, error: err.message }));
+        return jsonRes(res, 500, { success: false, error: err.message });
       }
-      return;
     }
 
-    // POST /api/wa/logout - Full logout: wipe credentials and session for a user
+    // POST /api/wa/logout — full credential wipe
     if (req.method === "POST" && pathname === "/api/wa/logout") {
       try {
-        const { userId } = await readBody();
-        if (!userId) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: false, error: "userId required" }));
-          return;
-        }
+        const { userId } = await readBody(req);
+        if (!userId) return jsonRes(res, 400, { success: false, error: "userId required" });
         await waSessionManager.logoutUser(userId);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, message: `User ${userId} logged out and credentials wiped` }));
+        return jsonRes(res, 200, { success: true });
       } catch (err: any) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: false, error: err.message }));
+        return jsonRes(res, 500, { success: false, error: err.message });
       }
-      return;
     }
 
-    // GET /api/wa/status/:userId - Get specific user's WhatsApp status
+    // GET /api/wa/status/:userId
     if (req.method === "GET" && pathname.startsWith("/api/wa/status/")) {
       try {
         const userId = pathname.replace("/api/wa/status/", "");
-        if (!userId) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "userId required in path" }));
-          return;
-        }
+        if (!userId) return jsonRes(res, 400, { error: "userId required in path" });
         const info = await waSessionManager.getUserStatus(userId);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(info));
+        return jsonRes(res, 200, info);
       } catch (err: any) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: err.message }));
+        return jsonRes(res, 500, { error: err.message });
       }
-      return;
     }
 
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Endpoint not found" }));
+    jsonRes(res, 404, { error: "Endpoint not found" });
   });
 
   server.on("error", (err: any) => {
     if (err.code === "EADDRINUSE") {
-      console.warn(`⚠️ HTTP port ${HTTP_PORT} is already in use by another instance. WhatsApp background worker is continuing without standalone HTTP port.`);
+      console.warn(`⚠️ Port ${HTTP_PORT} already in use — worker continuing without HTTP.`);
     } else {
       console.error("HTTP Server Error:", err);
     }
   });
 
   server.listen(HTTP_PORT, () => {
-    console.log(`🌐 Worker HTTP microservice listening on port ${HTTP_PORT}`);
-    console.log(`📋 Available endpoints:`);
-    console.log(`   POST /api/wa/connect       { userId }`);
-    console.log(`   POST /api/wa/disconnect    { userId }`);
-    console.log(`   POST /api/wa/logout        { userId }`);
-    console.log(`   POST /api/wa/pairing-code  { userId, phone }`);
-    console.log(`   POST /api/wa/send          { userId, phone, message }`);
-    console.log(`   GET  /api/wa/status/:userId`);
+    console.log(`🌐 Worker HTTP microservice on port ${HTTP_PORT}`);
     console.log(`   GET  /health`);
+    console.log(`   POST /api/wa/connect    { userId, forceFresh? }`);
+    console.log(`   POST /api/wa/disconnect { userId }`);
+    console.log(`   POST /api/wa/logout     { userId }`);
+    console.log(`   POST /api/wa/pairing-code { userId, phone }`);
+    console.log(`   POST /api/wa/send       { userId, phone, message }`);
+    console.log(`   GET  /api/wa/status/:userId`);
   });
 }
 

@@ -1,678 +1,550 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   QrCode,
   CheckCircle2,
   AlertCircle,
-  Clock,
   RefreshCw,
-  Power,
-  Smartphone,
-  ShieldCheck,
-  Zap,
-  Info,
-  Phone,
-  Copy,
-  Check,
-  Key,
-  LogOut,
-  Timer,
-  Wifi,
   WifiOff,
+  Wifi,
+  LogOut,
+  Smartphone,
+  Clock,
+  ArrowLeftRight,
+  Loader2,
 } from "lucide-react";
-import clsx from "clsx";
+import Image from "next/image";
 
+// ─── Connection state machine ─────────────────────────────────────────────────
+type WAStatus =
+  | "NOT_CONNECTED"
+  | "CONNECTING"
+  | "INIT_QR"
+  | "QR_READY"
+  | "PAIRING"
+  | "CONNECTED"
+  | "DISCONNECTED"
+  | "RECONNECTING"
+  | "LOGGED_OUT"
+  | "ERROR"
+  | string;
+
+// How often to poll the status API (ms)
+const POLL_INTERVAL_CONNECTED = 30_000;
+const POLL_INTERVAL_QR        = 3_000;
+const POLL_INTERVAL_DEFAULT   = 5_000;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+async function safePost(url: string, body?: object): Promise<{ ok: boolean; data: any }> {
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: body ? { "Content-Type": "application/json" } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const ct = res.headers.get("content-type") || "";
+    const data = ct.includes("application/json") ? await res.json() : { error: `HTTP ${res.status}` };
+    return { ok: res.ok, data };
+  } catch (e: any) {
+    return { ok: false, data: { error: e.message } };
+  }
+}
+
+// ─── Modal component ──────────────────────────────────────────────────────────
+function ConfirmModal({
+  title,
+  body,
+  confirmLabel,
+  confirmClass,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  confirmClass: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4 border border-slate-200 dark:border-slate-700">
+        <h3 className="text-base font-bold text-slate-900 dark:text-white">{title}</h3>
+        <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{body}</p>
+        <div className="flex gap-3 pt-1">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-colors ${confirmClass}`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── QR countdown ─────────────────────────────────────────────────────────────
+function useQrCountdown(qrExpiresAt: string | null): number | null {
+  const [seconds, setSeconds] = useState<number | null>(null);
+  useEffect(() => {
+    if (!qrExpiresAt) { setSeconds(null); return; }
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((new Date(qrExpiresAt).getTime() - Date.now()) / 1000));
+      setSeconds(left);
+    };
+    tick();
+    const t = setInterval(tick, 1_000);
+    return () => clearInterval(t);
+  }, [qrExpiresAt]);
+  return seconds;
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function WhatsAppConnectionPage() {
-  const [method, setMethod] = useState<"QR" | "PAIRING_CODE">("QR");
-  const [status, setStatus] = useState<string>("DISCONNECTED");
-  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [status, setStatus]           = useState<WAStatus>("NOT_CONNECTED");
+  const [qrCode, setQrCode]           = useState<string | null>(null);
   const [qrExpiresAt, setQrExpiresAt] = useState<string | null>(null);
-  const [phone, setPhone] = useState<string | null>(null);
+  const [phone, setPhone]             = useState<string | null>(null);
   const [connectedName, setConnectedName] = useState<string | null>(null);
   const [connectedAt, setConnectedAt] = useState<string | null>(null);
-  const [lastActiveAt, setLastActiveAt] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [logoutLoading, setLogoutLoading] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [qrSecondsLeft, setQrSecondsLeft] = useState<number | null>(null);
+  const [errorMsg, setErrorMsg]       = useState<string | null>(null);
+  const [notice, setNotice]           = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const isQrExpired = (qrSecondsLeft !== null && qrSecondsLeft <= 0) || (qrExpiresAt ? new Date(qrExpiresAt).getTime() < Date.now() : false);
+  const [loadingConnect, setLoadingConnect]         = useState(false);
+  const [loadingDisconnect, setLoadingDisconnect]   = useState(false);
+  const [loadingChangeNumber, setLoadingChangeNumber] = useState(false);
 
-  // Pairing code state
-  const [pairingPhone, setPairingPhone] = useState("");
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [pairingLoading, setPairingLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [showChangeModal, setShowChangeModal] = useState(false);
 
-  const safeJsonParse = async (res: Response) => {
-    const contentType = res.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) {
-      try {
-        return await res.json();
-      } catch {
-        return { error: "Failed to parse JSON response" };
-      }
-    }
-    const text = await res.text();
-    return { error: text.length > 200 ? `Server returned HTTP ${res.status}` : text };
-  };
+  const qrSeconds = useQrCountdown(qrExpiresAt);
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isMounted = useRef(true);
 
-  const [workerOffline, setWorkerOffline] = useState(false);
-
-  const fetchStatus = async () => {
+  // ── Poll for status ─────────────────────────────────────────────────────────
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch(`/api/whatsapp/status?t=${Date.now()}`, {
         cache: "no-store",
-        headers: { "Pragma": "no-cache" },
+        headers: { Pragma: "no-cache" },
       });
-      const data = await safeJsonParse(res);
-      if (data && data.status) {
-        setStatus(data.status || "DISCONNECTED");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!isMounted.current) return;
+      if (data?.status) {
+        setStatus(data.status);
         setQrCode(data.qrCode || null);
         setQrExpiresAt(data.qrExpiresAt || null);
-        if (data.pairingCode) {
-          setPairingCode(data.pairingCode);
-        }
         setPhone(data.phone || null);
         setConnectedName(data.name || null);
         setConnectedAt(data.connectedAt || null);
-        setLastActiveAt(data.lastActiveAt || null);
-        setWorkerOffline(!!data.workerOffline);
+        setErrorMsg(data.errorMessage || null);
       }
-    } catch (err) {
-      console.error("Failed to poll WhatsApp status", err);
-    }
-  };
-
-  // QR expiry countdown timer
-  useEffect(() => {
-    if (!qrExpiresAt || !qrCode) {
-      setQrSecondsLeft(null);
-      return;
-    }
-    const update = () => {
-      const remaining = Math.max(0, Math.ceil((new Date(qrExpiresAt).getTime() - Date.now()) / 1000));
-      setQrSecondsLeft(remaining);
-    };
-    update();
-    const t = setInterval(update, 1000);
-    return () => clearInterval(t);
-  }, [qrExpiresAt, qrCode]);
-
-  const handleResetState = async () => {
-    try {
-      setLoading(true);
-      await fetch("/api/whatsapp/disconnect", { method: "POST" });
-      setStatus("DISCONNECTED");
-      setQrCode(null);
-      setQrExpiresAt(null);
-      setPairingCode(null);
-      setNotice(null);
-      setWorkerOffline(false);
-    } catch {} finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(() => {
-      fetchStatus();
-    }, 2000);
-    return () => clearInterval(interval);
+    } catch {}
   }, []);
 
+  const scheduleNextPoll = useCallback((currentStatus: WAStatus) => {
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    let interval = POLL_INTERVAL_DEFAULT;
+    if (currentStatus === "CONNECTED")  interval = POLL_INTERVAL_CONNECTED;
+    if (currentStatus === "QR_READY" || currentStatus === "INIT_QR" || currentStatus === "PAIRING" || currentStatus === "CONNECTING") {
+      interval = POLL_INTERVAL_QR;
+    }
+    pollTimerRef.current = setTimeout(async () => {
+      await fetchStatus();
+    }, interval);
+  }, [fetchStatus]);
+
+  useEffect(() => {
+    isMounted.current = true;
+    fetchStatus();
+    return () => {
+      isMounted.current = false;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    scheduleNextPoll(status);
+  }, [status, scheduleNextPoll]);
+
+  const showNotice = (type: "success" | "error", text: string) => {
+    setNotice({ type, text });
+    setTimeout(() => setNotice(null), 5_000);
+  };
+
+  // ── Actions ─────────────────────────────────────────────────────────────────
   const handleConnect = async () => {
-    try {
-      setLoading(true);
-      setQrCode(null);
-      setQrExpiresAt(null);
-      setStatus("INIT_QR");
-      setNotice(null);
-      const res = await fetch("/api/whatsapp/connect", { method: "POST" });
-      const data = await safeJsonParse(res);
-
-      if (data) {
-        if (data.success === false || data.error) {
-          setNotice("Error: " + (data.message || data.error || "Unknown backend error"));
-          setStatus("ERROR");
-        } else {
-          setStatus(data.status || "INIT_QR");
-          setQrCode(data.qrCode || null);
-          setNotice(null);
-        }
-      }
-    } catch (err: any) {
-      console.error("Connect error:", err);
-      setNotice("Network Error: " + err.message);
-    } finally {
-      setLoading(false);
+    setLoadingConnect(true);
+    setNotice(null);
+    setQrCode(null);
+    setStatus("INIT_QR");
+    const { ok, data } = await safePost("/api/whatsapp/connect");
+    setLoadingConnect(false);
+    if (!ok || data?.success === false) {
+      setStatus("ERROR");
+      showNotice("error", data?.error || "Connection failed. Please try again.");
+    } else {
+      setStatus(data.status || "INIT_QR");
+      // Start fast polling
+      fetchStatus();
     }
-  };
-
-  const handleRequestPairingCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!pairingPhone.trim()) return;
-
-    try {
-      setPairingLoading(true);
-      setNotice(null);
-      setPairingCode(null);
-
-      const res = await fetch("/api/whatsapp/pairing-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: pairingPhone }),
-      });
-
-      const data = await safeJsonParse(res);
-      if (res.ok && data.pairingCode) {
-        setPairingCode(data.pairingCode);
-        setNotice("Pairing code generated! Enter this 8-digit code on your WhatsApp mobile device.");
-      } else {
-        setNotice("Error: " + (data.error || "Failed to generate pairing code"));
-      }
-    } catch (err: any) {
-      setNotice("Error: " + err.message);
-    } finally {
-      setPairingLoading(false);
-    }
-  };
-
-  const handleCopyCode = () => {
-    if (!pairingCode) return;
-    navigator.clipboard.writeText(pairingCode.replace(/[^a-zA-Z0-9]/g, ""));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
   };
 
   const handleDisconnect = async () => {
-    if (!confirm("WhatsApp session temporarily disconnect ho ja ye ga. Credentials preserve rahein ge — dobara connect karne par QR scan nahi karna parein ga. Continue?")) return;
-    try {
-      setLoading(true);
-      const res = await fetch("/api/whatsapp/disconnect", { method: "POST" });
-      const data = await safeJsonParse(res);
-      if (res.ok && data) {
-        setStatus("DISCONNECTED");
-        setQrCode(null);
-        setQrExpiresAt(null);
-        setPhone(null);
-        setPairingCode(null);
-        setNotice("✅ WhatsApp session temporarily disconnected. Credentials preserved — reconnect any time.");
-      } else {
-        setNotice("Error disconnecting: " + (data.error || "Unknown error"));
-      }
-    } catch (err: any) {
-      setNotice("Error: " + err.message);
-    } finally {
-      setLoading(false);
+    setLoadingDisconnect(true);
+    const { ok, data } = await safePost("/api/whatsapp/disconnect");
+    setLoadingDisconnect(false);
+    if (!ok || data?.success === false) {
+      showNotice("error", data?.error || "Could not disconnect. Please try again.");
+    } else {
+      setStatus("DISCONNECTED");
+      setQrCode(null);
+      setPhone(null);
+      showNotice("success", "WhatsApp disconnected. Your session is preserved.");
     }
   };
 
-  const handleLogout = async () => {
-    if (!confirm("⚠️ LOGOUT & REMOVE: This will completely unlink your WhatsApp account and delete all session data. Next time you connect, a fresh QR code will be required. Are you absolutely sure?")) return;
-    try {
-      setLogoutLoading(true);
-      const res = await fetch("/api/whatsapp/logout", { method: "POST" });
-      const data = await safeJsonParse(res);
-      if (res.ok && data) {
-        setStatus("LOGGED_OUT");
-        setQrCode(null);
-        setQrExpiresAt(null);
-        setPhone(null);
-        setConnectedName(null);
-        setConnectedAt(null);
-        setPairingCode(null);
-        setNotice("🗑️ WhatsApp account fully unlinked and session data cleared. Next connection will require fresh QR scan.");
-      } else {
-        setNotice("Error logging out: " + (data.error || "Unknown error"));
-      }
-    } catch (err: any) {
-      setNotice("Error: " + err.message);
-    } finally {
-      setLogoutLoading(false);
+  const handleChangeNumber = async () => {
+    setShowChangeModal(false);
+    setLoadingChangeNumber(true);
+    const { ok, data } = await safePost("/api/whatsapp/change-number");
+    setLoadingChangeNumber(false);
+    if (!ok || data?.success === false) {
+      showNotice("error", data?.error || "Could not remove WhatsApp. Please try again.");
+    } else {
+      setStatus("LOGGED_OUT");
+      setQrCode(null);
+      setPhone(null);
+      setConnectedName(null);
+      setConnectedAt(null);
+      showNotice("success", "WhatsApp account removed. Connect a new number below.");
     }
   };
 
+  const handleNewQr = async () => {
+    setLoadingConnect(true);
+    setQrCode(null);
+    setStatus("INIT_QR");
+    const { ok, data } = await safePost("/api/whatsapp/connect");
+    setLoadingConnect(false);
+    if (!ok) showNotice("error", "Could not generate new QR. Please try again.");
+    else { setStatus(data.status || "INIT_QR"); fetchStatus(); }
+  };
+
+  // ── Formatters ───────────────────────────────────────────────────────────────
+  const formatPhone = (p: string | null) => {
+    if (!p) return "";
+    return p.startsWith("92") ? `+${p}` : p;
+  };
+
+  const formatDate = (d: string | null) => {
+    if (!d) return "";
+    return new Date(d).toLocaleString("en-PK", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  };
+
+  // ── Loading states ───────────────────────────────────────────────────────────
+  const isTransitioning =
+    status === "CONNECTING" || status === "INIT_QR" || status === "RECONNECTING";
+
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-5 sm:space-y-6 max-w-5xl mx-auto pb-12">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="max-w-lg mx-auto px-4 py-8 space-y-5">
+
+        {/* Header */}
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <QrCode className="w-5 h-5 text-emerald-500" />
-            <span>WhatsApp Device Connection</span>
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Smartphone className="w-5 h-5 text-emerald-500" />
+            WhatsApp Connection
           </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Link your personal WhatsApp account. Your session is isolated — only your customers will receive messages from your number.
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Connect your personal WhatsApp to send recovery reminders.
           </p>
         </div>
 
-        <button
-          onClick={fetchStatus}
-          className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 min-h-[44px] self-start sm:self-auto"
-        >
-          <RefreshCw className="w-4 h-4" />
-          <span>Refresh Status</span>
-        </button>
-      </div>
-
-      {notice && (
-        <div
-          className={clsx(
-            "p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2.5 shadow-sm",
-            notice.startsWith("Error")
-              ? "bg-rose-50 text-rose-700 border border-rose-200"
-              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-          )}
-        >
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{notice}</span>
-        </div>
-      )}
-
-      {/* Main Connection Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-6 shadow-sm">
-        {status === "CONNECTED" ? (
-          /* STATE: CONNECTED */
-          <div className="space-y-6 animate-in fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30">
-                  <CheckCircle2 className="w-7 h-7" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base font-bold text-emerald-950 dark:text-emerald-100">
-                      WhatsApp Connected 🟢
-                    </h2>
-                    <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded bg-emerald-500 text-white">
-                      Live
-                    </span>
-                  </div>
-                  <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
-                    Phone: <span className="font-mono font-bold">{phone || "Linked Recovery Number"}</span>
-                    {connectedName && <span className="ml-2 opacity-70">({connectedName})</span>}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <button
-                  disabled={loading}
-                  onClick={handleConnect}
-                  className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition-colors min-h-[44px] flex items-center gap-1.5"
-                >
-                  <Wifi className="w-3.5 h-3.5" />
-                  Reconnect
-                </button>
-                <button
-                  disabled={loading}
-                  onClick={handleDisconnect}
-                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-md shadow-amber-500/20 flex items-center gap-1.5 transition-colors min-h-[44px]"
-                >
-                  <WifiOff className="w-4 h-4" />
-                  <span>Disconnect</span>
-                </button>
-                <button
-                  disabled={loading || logoutLoading}
-                  onClick={handleLogout}
-                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-500/20 flex items-center gap-1.5 transition-colors min-h-[44px]"
-                >
-                  {logoutLoading ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <LogOut className="w-4 h-4" />
-                  )}
-                  <span>Logout & Remove</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Info banners */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 flex items-start gap-2.5">
-                <WifiOff className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <div className="font-bold text-blue-800 dark:text-blue-200">Disconnect (Temporary)</div>
-                  <div className="text-blue-600 dark:text-blue-300 mt-0.5 leading-relaxed">Session pause hoti hai, credentials preserve rahte hain. Dobara connect karna asan hai — QR nahi chahiye.</div>
-                </div>
-              </div>
-              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 flex items-start gap-2.5">
-                <LogOut className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <div className="font-bold text-rose-800 dark:text-rose-200">Logout & Remove (Permanent)</div>
-                  <div className="text-rose-600 dark:text-rose-300 mt-0.5 leading-relaxed">WhatsApp account completely unlink hota hai. Session data delete hota hai. Next connect par fresh QR scan zaroori hai.</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Session Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-xs">
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                <span className="text-[11px] text-slate-400 block">Session Name</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200 mt-0.5 block truncate">
-                  {connectedName || "QistFlow WhatsApp Socket"}
-                </span>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                <span className="text-[11px] text-slate-400 block">Connected Since</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200 mt-0.5 block">
-                  {connectedAt ? new Date(connectedAt).toLocaleString("en-PK") : "Active Session"}
-                </span>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                <span className="text-[11px] text-slate-400 block">Worker Status</span>
-                <span className="font-bold text-emerald-500 mt-0.5 block flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>AlwaysData Active</span>
-                </span>
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* STATE: DISCONNECTED / LOGGED_OUT / QR_READY / CONNECTING */
-          <div className="space-y-6">
-            {/* LOGGED_OUT banner */}
-            {status === "LOGGED_OUT" && (
-              <div className="p-3.5 rounded-xl text-xs font-semibold flex items-start gap-2.5 bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-800">
-                <LogOut className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span>WhatsApp account unlinked hai. Neeche connect button dabayein — fresh QR code scan karna hoga.</span>
-              </div>
-            )}
-
-            {/* DISCONNECTED banner (with reconnect without QR) */}
-            {status === "DISCONNECTED" && (
-              <div className="p-3.5 rounded-xl text-xs font-semibold flex items-start gap-2.5 bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800">
-                <WifiOff className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span>Session temporarily disconnected hai. Agar pehle connect kiya tha aur logout nahi kiya, to connect dabane par QR scan ki zaroorat nahi — automatically reconnect ho ja ye ga.</span>
-              </div>
-            )}
-
-            {/* Method Tabs: Pairing Code vs QR Code */}
-            <div className="flex items-center gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl max-w-md">
-              <button
-                type="button"
-                onClick={() => setMethod("PAIRING_CODE")}
-                className={clsx(
-                  "flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all min-h-[40px]",
-                  method === "PAIRING_CODE"
-                    ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm"
-                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                )}
-              >
-                <Phone className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Link with Phone Number</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMethod("QR")}
-                className={clsx(
-                  "flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all min-h-[40px]",
-                  method === "QR"
-                    ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm"
-                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                )}
-              >
-                <QrCode className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Scan QR Code</span>
-              </button>
-            </div>
-
-            {/* TAB 1: PAIRING CODE METHOD */}
-            {method === "PAIRING_CODE" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 items-start">
-                <div className="space-y-4">
-                  <div>
-                    <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-                      Link WhatsApp with Phone Number
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                      Enter your recovery WhatsApp phone number to generate an 8-digit pairing code. No camera scanning required.
-                    </p>
-                  </div>
-
-                  <form onSubmit={handleRequestPairingCode} className="space-y-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                        WhatsApp Recovery Phone Number
-                      </label>
-                      <div className="relative">
-                        <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                        <input
-                          type="text"
-                          required
-                          value={pairingPhone}
-                          onChange={(e) => setPairingPhone(e.target.value)}
-                          placeholder="e.g. 03001234567 or 923001234567"
-                          className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 font-mono font-bold focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 min-h-[44px]"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={pairingLoading || !pairingPhone.trim()}
-                      className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-bold shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2 transition-all min-h-[46px]"
-                    >
-                      {pairingLoading ? (
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Key className="w-4 h-4" />
-                      )}
-                      <span>{pairingLoading ? "Generating 8-digit Code..." : "Get 8-Digit Pairing Code"}</span>
-                    </button>
-                  </form>
-
-                  {/* Instructions */}
-                  <div className="space-y-2 text-xs bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-                    <div className="font-bold text-slate-800 dark:text-slate-200 mb-1">Pairing Steps on your Mobile:</div>
-                    <div className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">1</span>
-                      <span>Open <strong>WhatsApp</strong> on your phone.</span>
-                    </div>
-                    <div className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">2</span>
-                      <span>Tap <strong>Settings (⋮)</strong> → <strong>Linked Devices</strong>.</span>
-                    </div>
-                    <div className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">3</span>
-                      <span>Tap <strong>Link a Device</strong> → select <strong>"Link with phone number instead"</strong> at the bottom.</span>
-                    </div>
-                    <div className="flex items-start gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">4</span>
-                      <span>Enter the 8-digit code shown on the right.</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pairing Code Display Box */}
-                <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-center min-h-[280px]">
-                  {pairingCode ? (
-                    <div className="space-y-4 animate-in zoom-in-95">
-                      <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider block">
-                        Your WhatsApp Pairing Code:
-                      </span>
-                      <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-emerald-300 dark:border-emerald-700 inline-flex items-center gap-3">
-                        <span className="font-mono font-black text-2xl sm:text-3xl text-emerald-600 dark:text-emerald-400 tracking-widest">
-                          {pairingCode}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleCopyCode}
-                          title="Copy Pairing Code"
-                          className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 transition-colors"
-                        >
-                          {copied ? <Check className="w-5 h-5 text-emerald-500" /> : <Copy className="w-5 h-5" />}
-                        </button>
-                      </div>
-                      <div className="text-xs font-semibold text-emerald-600 flex items-center justify-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                        <span>Awaiting input on your phone...</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 text-slate-400">
-                      <Key className="w-12 h-12 mx-auto stroke-[1.5]" />
-                      <p className="text-xs font-medium">
-                        Enter your phone number on the left and click "Get 8-Digit Pairing Code".
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* TAB 2: QR CODE METHOD */}
-            {method === "QR" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 items-center">
-                {/* Left Column: Instructions & Action */}
-                <div className="space-y-4 sm:space-y-5">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                    <span>
-                      {(status === "CONNECTING" || status === "INIT_QR")
-                        ? "Worker Connecting..."
-                        : status === "LOGGED_OUT"
-                        ? "Session Logged Out – Fresh QR Required"
-                        : status === "QR_READY"
-                        ? "QR Code Ready to Scan"
-                        : "WhatsApp Disconnected"}
-                    </span>
-                  </div>
-
-                  <div>
-                    <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-                      Connect WhatsApp via QR Code
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                      Link your recovery mobile device to dispatch automated Urdu installment reminders in the background.
-                    </p>
-                  </div>
-
-                  {/* Instructions List */}
-                  <div className="space-y-2.5 text-xs bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-                    <div className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">1</div>
-                      <div>Open <strong>WhatsApp</strong> on your recovery mobile phone.</div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">2</div>
-                      <div>Tap <strong>Settings (⋮)</strong> → select <strong>Linked Devices</strong>.</div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <div className="w-5 h-5 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">3</div>
-                      <div>Tap <strong>Link a Device</strong> and point your camera at the QR code.</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 pt-1">
-                    <button
-                      disabled={loading}
-                      onClick={handleConnect}
-                      className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-bold shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2 transition-all hover:scale-105 min-h-[44px]"
-                    >
-                      {loading ? (
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <QrCode className="w-4 h-4" />
-                      )}
-                      <span>{qrCode && !isQrExpired ? "Regenerate QR Code" : "Connect via QR Code"}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Right Column: QR Code Display Card */}
-                <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-center min-h-[300px]">
-                  {qrCode && !isQrExpired ? (
-                    <div className="space-y-3 animate-in zoom-in-95">
-                      <div className="p-3 bg-white rounded-2xl shadow-xl border border-slate-200 inline-block">
-                        <img src={qrCode} alt="WhatsApp QR Code" className="w-56 h-56 sm:w-64 sm:h-64 rounded-lg object-contain" />
-                      </div>
-                      {/* QR Expiry Timer */}
-                      {qrSecondsLeft !== null && qrSecondsLeft > 0 && (
-                        <div className={clsx(
-                          "text-xs font-semibold flex items-center justify-center gap-1.5",
-                          qrSecondsLeft <= 15 ? "text-rose-600" : "text-slate-500"
-                        )}>
-                          <Timer className="w-3.5 h-3.5" />
-                          <span>Expires in {qrSecondsLeft}s</span>
-                        </div>
-                      )}
-                      <div className="text-xs font-semibold text-emerald-600 flex items-center justify-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                        <span>Awaiting QR scan from your phone...</span>
-                      </div>
-                    </div>
-                  ) : isQrExpired ? (
-                    <div className="space-y-4 max-w-xs mx-auto">
-                      <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-900/40 flex items-center justify-center mx-auto">
-                        <Clock className="w-6 h-6 text-rose-500" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200">QR Code Expired</p>
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          60 seconds guzar gaye. "Connect via QR Code" dabayein naya QR generate karne ke liye.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={loading}
-                        onClick={handleConnect}
-                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-bold flex items-center gap-2 mx-auto hover:scale-105 transition-all"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        Generate New QR
-                      </button>
-                    </div>
-                  ) : (status === "CONNECTING" || status === "INIT_QR") ? (
-                    <div className="space-y-4 max-w-xs mx-auto">
-                      <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                      <div>
-                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                          Generating WhatsApp QR Code...
-                        </p>
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          WhatsApp secure session initialize ho rahi hai. QR code foran show ho jaye ga.
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleResetState}
-                        className="text-xs font-semibold text-rose-600 hover:underline block mx-auto"
-                      >
-                        Reset / Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 text-slate-400">
-                      <Smartphone className="w-12 h-12 mx-auto stroke-[1.5]" />
-                      <p className="text-xs font-medium">
-                        Click "Connect via QR Code" to display the pairing QR code.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+        {/* Notice banner */}
+        {notice && (
+          <div
+            className={`p-3.5 rounded-xl text-sm font-medium flex items-center gap-2.5 ${
+              notice.type === "success"
+                ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                : "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
+            }`}
+          >
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            {notice.text}
           </div>
         )}
-      </div>
 
-      {/* Security & Architecture Card */}
-      <div className="bg-slate-900 text-slate-200 p-4 sm:p-5 rounded-2xl border border-slate-800 flex items-start gap-3.5 text-xs">
-        <ShieldCheck className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <span className="font-bold text-white">Multi-User Isolated WhatsApp Architecture</span>
-          <p className="text-slate-400 leading-relaxed text-[11px]">
-            Har user ka WhatsApp session bilkul alag hai — <code>whatsapp_sessions/&lt;userId&gt;/</code> mein save hota hai. Ek user ka session doosre user ko kabhi affect nahi karega. QistFlow Baileys ko Vercel ke bajaye AlwaysData persistent worker mein chalata hai.
-          </p>
-        </div>
+        {/* ── STATE: CONNECTED ─────────────────────────────────────────────── */}
+        {status === "CONNECTED" && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            {/* Green status bar */}
+            <div className="bg-emerald-500 px-5 py-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                <CheckCircle2 className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <div className="text-white font-bold text-sm flex items-center gap-2">
+                  WhatsApp Connected
+                  <span className="text-[10px] font-black bg-white/20 px-2 py-0.5 rounded-full">LIVE</span>
+                </div>
+                <div className="text-emerald-100 text-xs mt-0.5">
+                  Your recovery reminders are active
+                </div>
+              </div>
+            </div>
+
+            {/* Details */}
+            <div className="p-5 space-y-3">
+              <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                <Smartphone className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                <div>
+                  <div className="text-[11px] text-slate-400 font-medium uppercase tracking-wide">Phone Number</div>
+                  <div className="text-sm font-bold text-slate-900 dark:text-white font-mono">
+                    {formatPhone(phone)}
+                    {connectedName && (
+                      <span className="ml-2 font-normal text-slate-500 text-xs">({connectedName})</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {connectedAt && (
+                <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                  <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                  <div>
+                    <div className="text-[11px] text-slate-400 font-medium uppercase tracking-wide">Connected Since</div>
+                    <div className="text-sm text-slate-700 dark:text-slate-300">{formatDate(connectedAt)}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  disabled={loadingDisconnect || loadingChangeNumber}
+                  onClick={handleDisconnect}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                >
+                  {loadingDisconnect
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <WifiOff className="w-4 h-4" />
+                  }
+                  Disconnect
+                </button>
+                <button
+                  disabled={loadingDisconnect || loadingChangeNumber}
+                  onClick={() => setShowChangeModal(true)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold disabled:opacity-50 transition-colors shadow-sm"
+                >
+                  {loadingChangeNumber
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <ArrowLeftRight className="w-4 h-4" />
+                  }
+                  Change Number
+                </button>
+              </div>
+            </div>
+
+            {/* Info strip */}
+            <div className="border-t border-slate-100 dark:border-slate-800 px-5 py-3 bg-blue-50/50 dark:bg-blue-950/20">
+              <p className="text-[11px] text-blue-600 dark:text-blue-400">
+                <strong>Disconnect</strong> — temporary pause, same number reconnects automatically.<br />
+                <strong>Change Number</strong> — permanently removes this account; fresh QR required.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── STATE: QR_READY ──────────────────────────────────────────────── */}
+        {status === "QR_READY" && qrCode && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-5">
+            <div className="text-center space-y-1">
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Scan QR Code</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Open WhatsApp → Settings → Linked Devices → Link a Device
+              </p>
+            </div>
+
+            {/* QR Image */}
+            <div className="flex justify-center">
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={qrCode}
+                  alt="WhatsApp QR Code"
+                  className="w-56 h-56 rounded-xl border-4 border-slate-100 dark:border-slate-700 shadow-lg"
+                />
+                {qrSeconds !== null && qrSeconds <= 10 && (
+                  <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
+                    <div className="text-white text-center">
+                      <div className="text-3xl font-black">{qrSeconds}</div>
+                      <div className="text-xs">Expiring</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Countdown */}
+            <div className="text-center space-y-3">
+              {qrSeconds !== null && qrSeconds > 0 && (
+                <div className="inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 rounded-full border border-amber-200 dark:border-amber-800">
+                  <Clock className="w-3.5 h-3.5" />
+                  QR expires in {qrSeconds}s
+                </div>
+              )}
+              <p className="text-xs text-slate-400">Waiting for scan...</p>
+            </div>
+
+            <button
+              onClick={handleNewQr}
+              disabled={loadingConnect}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
+            >
+              {loadingConnect
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <RefreshCw className="w-4 h-4" />
+              }
+              Generate New QR
+            </button>
+          </div>
+        )}
+
+        {/* ── STATE: TRANSITIONING (CONNECTING / INIT_QR / RECONNECTING) ──── */}
+        {isTransitioning && !qrCode && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-8 flex flex-col items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center">
+              <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
+            </div>
+            <div className="text-center space-y-1">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                {status === "RECONNECTING" ? "Reconnecting..." : "Connecting to WhatsApp..."}
+              </p>
+              <p className="text-xs text-slate-400">QR code will appear in a moment</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── STATE: PAIRING (waiting for user to enter pairing code on phone) */}
+        {status === "PAIRING" && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-8 flex flex-col items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-purple-50 dark:bg-purple-950/40 flex items-center justify-center">
+              <Loader2 className="w-7 h-7 text-purple-500 animate-spin" />
+            </div>
+            <div className="text-center space-y-1">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Waiting for WhatsApp...</p>
+              <p className="text-xs text-slate-400">Enter the pairing code on your phone</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── STATE: DISCONNECTED ─────────────────────────────────────────── */}
+        {status === "DISCONNECTED" && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
+            <div className="flex items-center gap-4 p-4 bg-amber-50/80 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
+                <WifiOff className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">WhatsApp Paused</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400">Your session is saved. Reconnect without scanning a new QR.</p>
+              </div>
+            </div>
+            <button
+              disabled={loadingConnect}
+              onClick={handleConnect}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm disabled:opacity-50 transition-colors shadow-md shadow-emerald-500/20"
+            >
+              {loadingConnect ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
+              Reconnect WhatsApp
+            </button>
+            <button
+              onClick={() => setShowChangeModal(true)}
+              className="w-full text-xs text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+            >
+              Connect a different WhatsApp number instead
+            </button>
+          </div>
+        )}
+
+        {/* ── STATE: NOT_CONNECTED / LOGGED_OUT / ERROR ──────────────────── */}
+        {(status === "NOT_CONNECTED" || status === "LOGGED_OUT" || status === "ERROR") && !isTransitioning && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-5">
+            {/* Status indicator */}
+            <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
+                <QrCode className="w-5 h-5 text-slate-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  WhatsApp Not Connected
+                </p>
+                {status === "ERROR" && errorMsg ? (
+                  <p className="text-xs text-rose-600 dark:text-rose-400 mt-0.5">{errorMsg}</p>
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Connect your WhatsApp to send recovery reminders.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <button
+              disabled={loadingConnect}
+              onClick={handleConnect}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm disabled:opacity-50 transition-colors shadow-md shadow-emerald-500/20"
+            >
+              {loadingConnect ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+              {loadingConnect ? "Generating QR..." : "Connect WhatsApp"}
+            </button>
+
+            {/* Instructions */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">How to connect</p>
+              <ol className="space-y-2">
+                {[
+                  "Click \"Connect WhatsApp\" above",
+                  "A QR code will appear on screen",
+                  "Open WhatsApp on your phone",
+                  "Go to Settings → Linked Devices → Link a Device",
+                  "Scan the QR code",
+                ].map((step, i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-xs text-slate-600 dark:text-slate-400">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 font-bold flex items-center justify-center text-[10px]">
+                      {i + 1}
+                    </span>
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+        )}
+
+        {/* ── Change Number Confirmation Modal ─────────────────────────────── */}
+        {showChangeModal && (
+          <ConfirmModal
+            title="Change WhatsApp Number?"
+            body="Your current WhatsApp account will be disconnected and removed. You will need to scan a new QR code to connect a different number."
+            confirmLabel="Continue"
+            confirmClass="bg-rose-600 hover:bg-rose-700"
+            onConfirm={handleChangeNumber}
+            onCancel={() => setShowChangeModal(false)}
+          />
+        )}
       </div>
     </div>
   );
