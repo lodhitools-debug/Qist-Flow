@@ -89,8 +89,13 @@ async function startWorker() {
     try {
       const session = await prisma.whatsAppSession.findUnique({ where: { id: "default" } });
 
-      // 1. Handle Pairing Code Request from Vercel
-      if (session?.status === "PAIRING_REQUESTED" && session.requestedPhone) {
+      // 1. Handle Disconnect Request from Vercel / DB
+      if (session?.status === "DISCONNECTED" && (waWebProvider.isConnected() || waWebProvider.getConnectionState() !== "DISCONNECTED")) {
+        console.log(`🛑 [Worker] Disconnect detected from DB. Cleaning up local session...`);
+        await waWebProvider.disconnect().catch(() => {});
+      }
+      // 2. Handle Pairing Code Request from Vercel
+      else if (session?.status === "PAIRING_REQUESTED" && session.requestedPhone) {
         console.log(`📲 [Worker] Pairing code requested for ${session.requestedPhone}...`);
         try {
           const code = await waWebProvider.requestPairingCode(session.requestedPhone);
@@ -113,13 +118,14 @@ async function startWorker() {
             },
           });
         }
-      } else if (session?.status === "CONNECTING" && !session.qrCode && !waWebProvider.isConnected()) {
-        // 2. Handle QR Connect Request from Vercel
+      }
+      // 3. Handle QR Connect Request from Vercel
+      else if (session?.status === "CONNECTING" && !session.qrCode && !waWebProvider.isConnected()) {
         const now = Date.now();
-        if (now - lastConnectInit > 5000) {
+        if (now - lastConnectInit > 3000) {
           lastConnectInit = now;
-          console.log(`🔄 [Worker] Connect requested from web. Initializing fresh QR code streaming...`);
-          await waWebProvider.forceReconnect(false).catch((err) => {
+          console.log(`🔄 [Worker] Fresh connect requested from web. Generating QR code...`);
+          await waWebProvider.forceReconnect(true).catch((err) => {
             console.error("❌ [Worker] QR reconnect error:", err.message);
           });
         }
