@@ -31,6 +31,8 @@ export async function POST(req: NextRequest) {
       update: {
         status: "DISCONNECTED",
         qrCode: null,
+        pairingCode: null,
+        requestedPhone: null,
         connectedPhone: null,
         connectedName: null,
         errorMessage: null,
@@ -39,6 +41,9 @@ export async function POST(req: NextRequest) {
       create: {
         id: "default",
         status: "DISCONNECTED",
+        qrCode: null,
+        pairingCode: null,
+        requestedPhone: null,
       },
     });
 
