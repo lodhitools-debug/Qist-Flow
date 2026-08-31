@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   try {
@@ -36,39 +37,54 @@ export async function GET(req: NextRequest) {
     if (!isConnected && computedStatus === "CONNECTING" && !dbSession?.qrCode && now - updatedAt > 20000) {
       computedStatus = "DISCONNECTED";
       workerOffline = true;
-      // Auto-heal DB state
       prisma.whatsAppSession.update({
         where: { id: "default" },
         data: { status: "DISCONNECTED" },
       }).catch(() => {});
     }
 
-    return NextResponse.json({
-      success: true,
-      status: computedStatus,
-      qrCode: isConnected ? null : (dbSession?.qrCode || null),
-      pairingCode: isConnected ? null : (dbSession?.pairingCode || null),
-      phone: dbSession?.connectedPhone || null,
-      name: dbSession?.connectedName || null,
-      connectedAt: dbSession?.connectedAt || null,
-      lastActiveAt: dbSession?.lastActiveAt || null,
-      errorMessage: dbSession?.errorMessage || null,
-      workerOffline,
-      queueStats: {
-        queued: queuedCount,
-        sending: sendingCount,
-        sentToday,
-        failedToday,
+    return NextResponse.json(
+      {
+        success: true,
+        status: computedStatus,
+        qrCode: isConnected ? null : (dbSession?.qrCode || null),
+        pairingCode: isConnected ? null : (dbSession?.pairingCode || null),
+        phone: dbSession?.connectedPhone || null,
+        name: dbSession?.connectedName || null,
+        connectedAt: dbSession?.connectedAt || null,
+        lastActiveAt: dbSession?.lastActiveAt || null,
+        errorMessage: dbSession?.errorMessage || null,
+        workerOffline,
+        queueStats: {
+          queued: queuedCount,
+          sending: sendingCount,
+          sentToday,
+          failedToday,
+        },
       },
-    });
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
   } catch (error: any) {
-    return NextResponse.json({
-      success: true,
-      status: "DISCONNECTED",
-      qrCode: null,
-      workerOffline: true,
-      error: error.message,
-      queueStats: { queued: 0, sending: 0, sentToday: 0, failedToday: 0 },
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        status: "DISCONNECTED",
+        qrCode: null,
+        workerOffline: true,
+        error: error.message,
+        queueStats: { queued: 0, sending: 0, sentToday: 0, failedToday: 0 },
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
+      }
+    );
   }
 }

@@ -53,7 +53,10 @@ export default function WhatsAppConnectionPage() {
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch("/api/whatsapp/status");
+      const res = await fetch(`/api/whatsapp/status?t=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Pragma": "no-cache" },
+      });
       const data = await safeJsonParse(res);
       if (data && data.status) {
         setStatus(data.status || "DISCONNECTED");
@@ -90,7 +93,7 @@ export default function WhatsAppConnectionPage() {
     fetchStatus();
     const interval = setInterval(() => {
       fetchStatus();
-    }, 3500);
+    }, 2000);
     return () => clearInterval(interval);
   }, []);
 
