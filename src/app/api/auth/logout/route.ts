@@ -21,12 +21,40 @@ export async function POST(req: NextRequest) {
       message: "Logged out successfully",
     });
 
-    response.cookies.delete("qistflow_token");
+    response.cookies.set({
+      name: "qistflow_token",
+      value: "",
+      path: "/",
+      expires: new Date(0),
+      maxAge: 0,
+    });
+
     return response;
   } catch (error: any) {
-    return NextResponse.json(
+    const response = NextResponse.json(
       { success: false, error: error.message || "Failed to logout" },
       { status: 500 }
     );
+    response.cookies.set({
+      name: "qistflow_token",
+      value: "",
+      path: "/",
+      expires: new Date(0),
+      maxAge: 0,
+    });
+    return response;
   }
+}
+
+export async function GET(req: NextRequest) {
+  const url = new URL("/login", req.url);
+  const response = NextResponse.redirect(url);
+  response.cookies.set({
+    name: "qistflow_token",
+    value: "",
+    path: "/",
+    expires: new Date(0),
+    maxAge: 0,
+  });
+  return response;
 }

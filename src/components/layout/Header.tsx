@@ -68,10 +68,8 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
   const handleLogout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-      router.push("/login");
-    } catch {
-      router.push("/login");
-    }
+    } catch {}
+    window.location.href = "/login";
   };
 
   const handleRefresh = async () => {
