@@ -648,7 +648,7 @@ class WhatsAppSessionManager {
     if (!fs.existsSync(baseDir)) return;
 
     const userDirs = fs.readdirSync(baseDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
+      .filter((d) => d.isDirectory() && d.name !== "default")
       .map((d) => d.name);
 
     for (const userId of userDirs) {

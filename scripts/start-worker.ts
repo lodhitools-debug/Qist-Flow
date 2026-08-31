@@ -176,7 +176,12 @@ async function startWorker() {
           ) {
             if (now - lastInit > 3000) {
               lastConnectInitPerUser.set(userId, now);
-              if (userSession.hasSavedAuth()) {
+              if (session.status === "INIT_QR") {
+                console.log(`🔄 [Worker] Session ${session.id} (user: ${userId}): Fresh QR requested. Generating QR...`);
+                await waSessionManager.connectUser(userId, true).catch((err) => {
+                  console.error(`❌ [Worker] Session ${session.id} (user: ${userId}): QR connect error:`, err.message);
+                });
+              } else if (userSession.hasSavedAuth()) {
                 console.log(`🔄 [Worker] Session ${session.id} (user: ${userId}): Saved creds found. Reconnecting without QR...`);
                 await userSession.init().catch((err) => {
                   console.error(`❌ [Worker] Session ${session.id} (user: ${userId}): Reconnect error:`, err.message);
