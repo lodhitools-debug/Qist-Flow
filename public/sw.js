@@ -1,4 +1,4 @@
-const CACHE_NAME = "qistflow-shell-v4";
+const CACHE_NAME = "qistflow-shell-v5"; // bumped to invalidate old caches
 const STATIC_ASSETS = [
   "/manifest.webmanifest",
   "/icons/icon-192.svg",
@@ -11,7 +11,7 @@ self.addEventListener("install", (event) => {
 });
 
 // Activate: Delete all previous caches immediately
-self.addEventListener("activate", (event) => {
+self.addEventListener("activate", (event) => { console.log('Service Worker activated, cache name:', CACHE_NAME);
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(keys.map((key) => caches.delete(key)));
