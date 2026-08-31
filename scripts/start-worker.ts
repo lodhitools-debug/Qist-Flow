@@ -124,10 +124,17 @@ async function startWorker() {
         const now = Date.now();
         if (now - lastConnectInit > 3000) {
           lastConnectInit = now;
-          console.log(`🔄 [Worker] Fresh connect requested from web. Generating QR code...`);
-          await waWebProvider.forceReconnect(true).catch((err) => {
-            console.error("❌ [Worker] QR reconnect error:", err.message);
-          });
+          if (waWebProvider.hasSavedAuth()) {
+            console.log(`🔄 [Worker] Saved credentials found. Reconnecting socket without wiping...`);
+            await waWebProvider.init().catch((err) => {
+              console.error("❌ [Worker] Reconnect error:", err.message);
+            });
+          } else {
+            console.log(`🔄 [Worker] Fresh connect requested from web. Generating QR code...`);
+            await waWebProvider.forceReconnect(true).catch((err) => {
+              console.error("❌ [Worker] QR reconnect error:", err.message);
+            });
+          }
         }
       }
     } catch (err) {}

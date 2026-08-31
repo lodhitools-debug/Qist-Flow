@@ -115,18 +115,20 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
         if (connection === "close") {
           const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-          const isRegistered = !!(state.creds?.registered || state.creds?.me);
+          const isRegistered = !!(state.creds?.registered || state.creds?.me || this.hasSavedAuth());
+          const isRestartRequired = statusCode === DisconnectReason.restartRequired || statusCode === 515;
 
           console.log(`⚠️ [Baileys] Connection closed: statusCode=${statusCode}, shouldReconnect=${shouldReconnect}, isRegistered=${isRegistered}`);
 
-          if (isRegistered) {
-            // Credentials exist! Reconnect immediately without wiping
+          if (isRegistered || isRestartRequired) {
+            // Credentials exist! WhatsApp is finalizing authentication handshake. Reconnect immediately without wiping
+            console.log("🔄 [Baileys] Socket restart required to finalize connection. Reconnecting...");
             this.connectionState = "CONNECTING";
             this.sock = null;
             this.isConnecting = false;
             setTimeout(() => {
               this.init();
-            }, 2000);
+            }, 1200);
           } else {
             this.connectionState = statusCode === DisconnectReason.loggedOut ? "DISCONNECTED" : "FAILED";
             this.errorMessage = lastDisconnect?.error?.message || "Connection closed";
@@ -140,7 +142,7 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
             if (shouldReconnect) {
               setTimeout(() => {
                 this.init();
-              }, 4000);
+              }, 3000);
             }
           }
         } else if (connection === "open") {
@@ -236,6 +238,17 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
     } catch (e) {}
 
     await this.updateDbSession();
+  }
+
+  hasSavedAuth(): boolean {
+    try {
+      const credsPath = path.join(this.sessionDir, "creds.json");
+      if (fs.existsSync(credsPath)) {
+        const content = JSON.parse(fs.readFileSync(credsPath, "utf-8"));
+        return !!(content?.me || content?.registered || content?.account);
+      }
+    } catch {}
+    return false;
   }
 
   isConnected(): boolean {
