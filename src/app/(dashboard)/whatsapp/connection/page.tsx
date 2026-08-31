@@ -49,6 +49,8 @@ export default function WhatsAppConnectionPage() {
     return { error: text.length > 200 ? `Server returned HTTP ${res.status}` : text };
   };
 
+  const [workerOffline, setWorkerOffline] = useState(false);
+
   const fetchStatus = async () => {
     try {
       const res = await fetch("/api/whatsapp/status");
@@ -60,9 +62,24 @@ export default function WhatsAppConnectionPage() {
         setConnectedName(data.name || null);
         setConnectedAt(data.connectedAt || null);
         setLastActiveAt(data.lastActiveAt || null);
+        setWorkerOffline(!!data.workerOffline);
       }
     } catch (err) {
       console.error("Failed to poll WhatsApp status", err);
+    }
+  };
+
+  const handleResetState = async () => {
+    try {
+      setLoading(true);
+      await fetch("/api/whatsapp/disconnect", { method: "POST" });
+      setStatus("DISCONNECTED");
+      setQrCode(null);
+      setPairingCode(null);
+      setNotice(null);
+      setWorkerOffline(false);
+    } catch {} finally {
+      setLoading(false);
     }
   };
 
@@ -473,11 +490,29 @@ export default function WhatsAppConnectionPage() {
                       </div>
                     </div>
                   ) : status === "CONNECTING" ? (
-                    <div className="space-y-3">
+                    <div className="space-y-4 max-w-xs mx-auto">
                       <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                      <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                        Generating secure pairing QR code...
-                      </p>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          Awaiting QR Code from Worker...
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Agar QR code foran show na ho to background worker start karein.
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-left text-xs font-mono text-slate-700 dark:text-slate-300">
+                        <span className="text-[10px] text-slate-400 uppercase font-sans font-bold block mb-1">Start Worker:</span>
+                        <code>npm run worker</code>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleResetState}
+                        className="text-xs font-semibold text-rose-600 hover:underline"
+                      >
+                        Reset / Cancel
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-3 text-slate-400">

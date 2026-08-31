@@ -8,57 +8,84 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const session = await getSessionUser(req);
-
-    // 1. If AlwaysData remote worker is configured via WHATSAPP_SERVICE_URL, notify it
     const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
+
+    let workerConnected = false;
+    let workerError: string | null = null;
+
+    // 1. If AlwaysData remote worker is configured via WHATSAPP_SERVICE_URL, notify it with a timeout
     if (serviceUrl) {
       try {
-        await fetch(`${serviceUrl}/api/wa/connect`, {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+        const workerRes = await fetch(`${serviceUrl}/api/wa/connect`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "",
           },
+          signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
+
+        if (workerRes.ok) {
+          workerConnected = true;
+          const data = await workerRes.json();
+          if (data.qrCode) {
+            return NextResponse.json({
+              success: true,
+              status: "QR_READY",
+              qrCode: data.qrCode,
+              message: "QR code generated from AlwaysData worker!",
+            });
+          }
+        }
       } catch (err: any) {
-        console.warn("[AlwaysData Worker Connect Warning]:", err.message);
+        workerError = `AlwaysData worker at ${serviceUrl} is unreachable (${err.name === 'AbortError' ? 'timed out' : err.message})`;
+        console.warn("[AlwaysData Worker Connect Warning]:", workerError);
       }
     }
 
     // 2. Fetch current session or initialize
     const currentSession = await prisma.whatsAppSession.findUnique({ where: { id: "default" } });
     const isAlreadyConnected = !!currentSession?.connectedPhone;
-    const targetStatus = isAlreadyConnected ? "CONNECTED" : (currentSession?.status === "QR_READY" ? "QR_READY" : "CONNECTING");
+    const targetStatus = isAlreadyConnected ? "CONNECTED" : (currentSession?.status === "QR_READY" && currentSession?.qrCode ? "QR_READY" : "CONNECTING");
 
     const updatedSession = await prisma.whatsAppSession.upsert({
       where: { id: "default" },
       update: {
         status: targetStatus,
-        errorMessage: null,
+        errorMessage: workerError,
         updatedAt: new Date(),
       },
       create: {
         id: "default",
         status: targetStatus,
+        errorMessage: workerError,
       },
     });
 
     await logActivity({
       userId: session?.userId,
       action: "WHATSAPP_CONNECT_INIT",
-      details: { serviceUrl: serviceUrl || "Supabase DB sync" },
+      details: { serviceUrl: serviceUrl || "Supabase DB sync", workerConnected },
     }).catch(() => {});
 
     return NextResponse.json({
       success: true,
       status: updatedSession.status,
       qrCode: updatedSession.qrCode,
-      message: "WhatsApp connection initialized. Awaiting QR code...",
+      workerOffline: !workerConnected && !!serviceUrl,
+      message: workerConnected
+        ? "WhatsApp session initializing. Awaiting QR code..."
+        : workerError || "Awaiting AlwaysData background worker initialization...",
     });
   } catch (error: any) {
     return NextResponse.json({
       success: false,
-      status: "CONNECTING",
+      status: "DISCONNECTED",
       error: error.message || "Failed to initialize WhatsApp connection",
     });
   }
