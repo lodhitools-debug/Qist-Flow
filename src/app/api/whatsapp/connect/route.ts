@@ -13,9 +13,14 @@ export async function POST(req: NextRequest) {
     const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
     let workerConnected = false;
 
+    const targetUserId = user.userId || (user as any).id || (user as any).sub;
+    if (!targetUserId) {
+      return NextResponse.json({ success: false, error: "User session invalid. Please log in again." }, { status: 401 });
+    }
+
     // 1. Fetch current user session
     const currentSession = await prisma.whatsAppSession.findUnique({
-      where: { userId: user.userId },
+      where: { userId: targetUserId },
     }).catch(() => null);
 
     if (currentSession?.status === "CONNECTED" && currentSession?.connectedPhone) {
@@ -28,14 +33,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 2. Direct fetch removed to rely 100% on DB polling.
-    // The background worker on AlwaysData or Local PC will detect CONNECTING status and generate QR.
-
-    // 3. Update DB session status to INIT_QR for worker polling loop
-    // Using INIT_QR instead of CONNECTING prevents the old remote AlwaysData worker from intercepting
-    // and crashing (due to missing crypto fix) while we run the local worker.
+    // 2. Update DB session status to INIT_QR for worker polling loop
     const updatedSession = await prisma.whatsAppSession.upsert({
-      where: { userId: user.userId },
+      where: { userId: targetUserId },
       update: {
         status: "INIT_QR",
         errorMessage: null,
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
         updatedAt: new Date(),
       },
       create: {
-        userId: user.userId,
+        userId: targetUserId,
         status: "INIT_QR",
         errorMessage: null,
         pairingCode: null,
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     });
 
     await logActivity({
-      userId: user.userId,
+      userId: targetUserId,
       action: "WHATSAPP_CONNECT_INIT",
       details: { serviceUrl: serviceUrl || "Supabase DB sync", workerConnected },
     }).catch(() => {});

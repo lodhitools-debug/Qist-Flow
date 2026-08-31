@@ -11,6 +11,11 @@ export async function POST(req: NextRequest) {
   const { user, errorResponse } = await requireAuth(req);
   if (errorResponse) return errorResponse;
 
+  const targetUserId = user.userId || (user as any).id || (user as any).sub;
+  if (!targetUserId) {
+    return NextResponse.json({ success: false, error: "User session invalid. Please log in again." }, { status: 401 });
+  }
+
   try {
     const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
 
@@ -23,16 +28,16 @@ export async function POST(req: NextRequest) {
             "Content-Type": "application/json",
             "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "",
           },
-          body: JSON.stringify({ userId: user.userId }),
+          body: JSON.stringify({ userId: targetUserId }),
         });
       } catch (err: any) {
-        console.warn(`[AlwaysData Worker Logout Warning for ${user.userId}]:`, err.message);
+        console.warn(`[AlwaysData Worker Logout Warning for ${targetUserId}]:`, err.message);
       }
     }
 
     // 2. Delete local session directory on server if present
     try {
-      const userSessionDir = path.join(process.cwd(), "whatsapp_sessions", user.userId);
+      const userSessionDir = path.join(process.cwd(), "whatsapp_sessions", targetUserId);
       if (fs.existsSync(userSessionDir)) {
         fs.rmSync(userSessionDir, { recursive: true, force: true });
       }
@@ -40,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Reset DB session record to LOGGED_OUT and purge credentials
     await prisma.whatsAppSession.upsert({
-      where: { userId: user.userId },
+      where: { userId: targetUserId },
       update: {
         status: "LOGGED_OUT",
         qrCode: null,
@@ -56,7 +61,7 @@ export async function POST(req: NextRequest) {
         updatedAt: new Date(),
       },
       create: {
-        userId: user.userId,
+        userId: targetUserId,
         status: "LOGGED_OUT",
         qrCode: null,
         pairingCode: null,
@@ -65,7 +70,7 @@ export async function POST(req: NextRequest) {
     });
 
     await logActivity({
-      userId: user.userId,
+      userId: targetUserId,
       action: "WHATSAPP_LOGOUT_REMOVE",
       details: { serviceUrl: serviceUrl || "Supabase DB sync" },
     }).catch(() => {});
@@ -76,7 +81,7 @@ export async function POST(req: NextRequest) {
       message: "WhatsApp session logged out and credentials purged successfully.",
     });
   } catch (error: any) {
-    console.error(`[WhatsApp Logout Error] userId=${user.userId}:`, error.message);
+    console.error(`[WhatsApp Logout Error] userId=${targetUserId}:`, error.message);
     return NextResponse.json(
       {
         success: false,

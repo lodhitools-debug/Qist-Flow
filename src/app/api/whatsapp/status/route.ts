@@ -9,9 +9,14 @@ export async function GET(req: NextRequest) {
   const { user, errorResponse } = await requireAuth(req);
   if (errorResponse) return errorResponse;
 
+  const targetUserId = user.userId || (user as any).id || (user as any).sub;
+  if (!targetUserId) {
+    return NextResponse.json({ success: false, error: "User session invalid. Please log in again." }, { status: 401 });
+  }
+
   try {
     const dbSession = await prisma.whatsAppSession.findUnique({
-      where: { userId: user.userId },
+      where: { userId: targetUserId },
     }).catch(() => null);
 
     let queuedCount = 0;
@@ -43,7 +48,7 @@ export async function GET(req: NextRequest) {
       qrCode = null;
       computedStatus = "NOT_CONNECTED";
       prisma.whatsAppSession.update({
-        where: { userId: user.userId },
+        where: { userId: targetUserId },
         data: { qrCode: null, status: "NOT_CONNECTED" },
       }).catch(() => {});
     }
@@ -51,7 +56,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        userId: user.userId,
+        userId: targetUserId,
         userName: user.name,
         status: computedStatus,
         qrCode: isConnected ? null : qrCode,

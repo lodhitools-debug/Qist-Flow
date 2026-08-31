@@ -8,6 +8,11 @@ export async function POST(req: NextRequest) {
   const { user, errorResponse } = await requireAuth(req);
   if (errorResponse) return errorResponse;
 
+  const targetUserId = user.userId || (user as any).id || (user as any).sub;
+  if (!targetUserId) {
+    return NextResponse.json({ success: false, error: "User session invalid. Please log in again." }, { status: 401 });
+  }
+
   try {
     const body = await req.json().catch(() => ({}));
     const { phone } = body;
@@ -28,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Write pairing request to Supabase DB for this user
     await prisma.whatsAppSession.upsert({
-      where: { userId: user.userId },
+      where: { userId: targetUserId },
       update: {
         status: "PAIRING",
         requestedPhone: cleanPhone,
@@ -37,7 +42,7 @@ export async function POST(req: NextRequest) {
         updatedAt: new Date(),
       },
       create: {
-        userId: user.userId,
+        userId: targetUserId,
         status: "PAIRING",
         requestedPhone: cleanPhone,
       },
@@ -55,7 +60,7 @@ export async function POST(req: NextRequest) {
             "Content-Type": "application/json",
             "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "",
           },
-          body: JSON.stringify({ userId: user.userId, phone: cleanPhone }),
+          body: JSON.stringify({ userId: targetUserId, phone: cleanPhone }),
           signal: controller.signal,
         }).catch(() => {});
         clearTimeout(timeoutId);
@@ -65,7 +70,7 @@ export async function POST(req: NextRequest) {
     // 3. Poll DB for up to 6 seconds awaiting worker to generate pairing code
     for (let i = 0; i < 6; i++) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      const updated = await prisma.whatsAppSession.findUnique({ where: { userId: user.userId } });
+      const updated = await prisma.whatsAppSession.findUnique({ where: { userId: targetUserId } });
       if (updated?.pairingCode) {
         return NextResponse.json({
           success: true,
@@ -87,7 +92,7 @@ export async function POST(req: NextRequest) {
       message: "Pairing code requested. Generating code from background worker...",
     });
   } catch (error: any) {
-    console.error(`[WhatsApp Pairing Code Error] userId=${user.userId}:`, error.message);
+    console.error(`[WhatsApp Pairing Code Error] userId=${targetUserId}:`, error.message);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to request pairing code" },
       { status: 500 }

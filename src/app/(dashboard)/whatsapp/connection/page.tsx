@@ -24,7 +24,7 @@ import {
 import clsx from "clsx";
 
 export default function WhatsAppConnectionPage() {
-  const [method, setMethod] = useState<"QR" | "PAIRING_CODE">("PAIRING_CODE");
+  const [method, setMethod] = useState<"QR" | "PAIRING_CODE">("QR");
   const [status, setStatus] = useState<string>("DISCONNECTED");
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [qrExpiresAt, setQrExpiresAt] = useState<string | null>(null);
@@ -36,6 +36,8 @@ export default function WhatsAppConnectionPage() {
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [qrSecondsLeft, setQrSecondsLeft] = useState<number | null>(null);
+
+  const isQrExpired = (qrSecondsLeft !== null && qrSecondsLeft <= 0) || (qrExpiresAt ? new Date(qrExpiresAt).getTime() < Date.now() : false);
 
   // Pairing code state
   const [pairingPhone, setPairingPhone] = useState("");
@@ -126,6 +128,8 @@ export default function WhatsAppConnectionPage() {
       setLoading(true);
       setQrCode(null);
       setQrExpiresAt(null);
+      setStatus("INIT_QR");
+      setNotice(null);
       const res = await fetch("/api/whatsapp/connect", { method: "POST" });
       const data = await safeJsonParse(res);
 
@@ -230,8 +234,6 @@ export default function WhatsAppConnectionPage() {
       setLogoutLoading(false);
     }
   };
-
-  const isQrExpired = qrSecondsLeft !== null && qrSecondsLeft <= 0;
 
   return (
     <div className="space-y-5 sm:space-y-6 max-w-5xl mx-auto pb-12">

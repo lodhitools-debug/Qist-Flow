@@ -9,6 +9,11 @@ export async function POST(req: NextRequest) {
   const { user, errorResponse } = await requireAuth(req);
   if (errorResponse) return errorResponse;
 
+  const targetUserId = user.userId || (user as any).id || (user as any).sub;
+  if (!targetUserId) {
+    return NextResponse.json({ success: false, error: "User session invalid. Please log in again." }, { status: 401 });
+  }
+
   try {
     const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
 
@@ -21,16 +26,16 @@ export async function POST(req: NextRequest) {
             "Content-Type": "application/json",
             "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "",
           },
-          body: JSON.stringify({ userId: user.userId }),
+          body: JSON.stringify({ userId: targetUserId }),
         });
       } catch (err: any) {
-        console.warn(`[AlwaysData Worker Disconnect Warning for ${user.userId}]:`, err.message);
+        console.warn(`[AlwaysData Worker Disconnect Warning for ${targetUserId}]:`, err.message);
       }
     }
 
     // 2. Set DB session to DISCONNECTED for this user (keeps saved auth on disk)
     await prisma.whatsAppSession.upsert({
-      where: { userId: user.userId },
+      where: { userId: targetUserId },
       update: {
         status: "DISCONNECTED",
         qrCode: null,
@@ -41,7 +46,7 @@ export async function POST(req: NextRequest) {
         updatedAt: new Date(),
       },
       create: {
-        userId: user.userId,
+        userId: targetUserId,
         status: "DISCONNECTED",
         qrCode: null,
         pairingCode: null,
@@ -50,7 +55,7 @@ export async function POST(req: NextRequest) {
     });
 
     await logActivity({
-      userId: user.userId,
+      userId: targetUserId,
       action: "WHATSAPP_DISCONNECT",
       details: { serviceUrl: serviceUrl || "Supabase DB sync" },
     }).catch(() => {});
@@ -61,7 +66,7 @@ export async function POST(req: NextRequest) {
       message: "WhatsApp session disconnected temporarily (saved credentials preserved).",
     });
   } catch (error: any) {
-    console.error(`[WhatsApp Disconnect Error] userId=${user.userId}:`, error.message);
+    console.error(`[WhatsApp Disconnect Error] userId=${targetUserId}:`, error.message);
     return NextResponse.json(
       {
         success: false,

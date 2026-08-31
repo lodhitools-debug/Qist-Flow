@@ -38,7 +38,12 @@ export async function signToken(payload: TokenPayload): Promise<string> {
 export async function verifyToken(token: string): Promise<TokenPayload | null> {
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
-    return payload as unknown as TokenPayload;
+    const p = payload as any;
+    const userId = (p.userId || p.id || p.sub || "") as string;
+    return {
+      ...p,
+      userId,
+    } as TokenPayload;
   } catch (error) {
     return null;
   }
