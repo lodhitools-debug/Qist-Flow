@@ -107,22 +107,14 @@ export async function PUT(
       salesPerson,
       recoveryPerson,
       comment,
-      optedOut,
       assignedToUserId,
       assignedManagerId,
+      optedOut,
     } = body;
-
-    let cleanPrimary = primaryPhone;
-    if (primaryPhone) {
-      const phoneObj = formatPhoneNumber(primaryPhone);
-      if (phoneObj.isValid) {
-        cleanPrimary = phoneObj.clean;
-      }
-    }
 
     const data: any = {
       customerName,
-      primaryPhone: cleanPrimary,
+      primaryPhone: primaryPhone ? formatPhoneNumber(primaryPhone).clean : undefined,
       secondaryPhone: secondaryPhone ? formatPhoneNumber(secondaryPhone).clean : undefined,
       cnic,
       webNo,
@@ -166,5 +158,59 @@ export async function PUT(
     return NextResponse.json({ success: true, customer: updated });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message || "Failed to update customer" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getSessionUser(req);
+    if (!session || session.role === "RECOVERY_OFFICER") {
+      return NextResponse.json(
+        { success: false, error: "Access denied. Only Admins and Managers can delete customer records." },
+        { status: 403 }
+      );
+    }
+
+    const isAllowed = await canAccessCustomer(session, params.id);
+    if (!isAllowed) {
+      return NextResponse.json(
+        { success: false, error: "Access denied. Cannot delete customer outside your assigned portfolio." },
+        { status: 403 }
+      );
+    }
+
+    const existing = await prisma.customer.findUnique({
+      where: { id: params.id },
+      select: { id: true, account: true, customerName: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ success: false, error: "Customer not found" }, { status: 404 });
+    }
+
+    await prisma.customer.delete({
+      where: { id: params.id },
+    });
+
+    await logActivity({
+      userId: session.userId,
+      action: "CUSTOMER_DELETE",
+      entityType: "Customer",
+      entityId: params.id,
+      details: { account: existing.account, customerName: existing.customerName },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Customer ${existing.customerName} (${existing.account}) deleted successfully.`,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to delete customer" },
+      { status: 500 }
+    );
   }
 }

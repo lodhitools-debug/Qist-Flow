@@ -201,3 +201,78 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await getSessionUser(req);
+    if (!session || session.role === "RECOVERY_OFFICER") {
+      return NextResponse.json(
+        { success: false, error: "Access denied. Only Admins and Managers can delete customers." },
+        { status: 403 }
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const { ids, all } = body;
+
+    const customerScope = getUserCustomerScope(session);
+
+    if (all === true) {
+      if (session.role !== "ADMIN") {
+        return NextResponse.json(
+          { success: false, error: "Only Super Admins can purge all customer records." },
+          { status: 403 }
+        );
+      }
+
+      // Purge all customer test data
+      const result = await prisma.customer.deleteMany({});
+
+      await logActivity({
+        userId: session.userId,
+        action: "CUSTOMER_PURGE_ALL",
+        entityType: "Customer",
+        details: { deletedCount: result.count },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Successfully purged all ${result.count} customer records from database.`,
+        count: result.count,
+      });
+    }
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "Please provide an array of customer IDs to delete." },
+        { status: 400 }
+      );
+    }
+
+    const result = await prisma.customer.deleteMany({
+      where: {
+        id: { in: ids },
+        ...customerScope,
+      },
+    });
+
+    await logActivity({
+      userId: session.userId,
+      action: "CUSTOMER_BULK_DELETE",
+      entityType: "Customer",
+      details: { deletedCount: result.count, requestedIdsCount: ids.length },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Successfully deleted ${result.count} customer(s).`,
+      count: result.count,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to delete customers" },
+      { status: 500 }
+    );
+  }
+}
+

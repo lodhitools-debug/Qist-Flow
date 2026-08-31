@@ -222,3 +222,45 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await getSessionUser(req);
+    if (!session || session.role !== "ADMIN") {
+      return NextResponse.json({ success: false, error: "Only admins can remove users" }, { status: 403 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const { userIds } = body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return NextResponse.json({ success: false, error: "Please provide user IDs to delete" }, { status: 400 });
+    }
+
+    // Exclude current admin's own ID from deletion
+    const filteredIds = userIds.filter((id) => id !== session.userId);
+
+    const result = await prisma.user.deleteMany({
+      where: {
+        id: { in: filteredIds },
+        role: { not: "ADMIN" },
+      },
+    });
+
+    await logActivity({
+      userId: session.userId,
+      action: "USER_BULK_DELETE",
+      entityType: "User",
+      details: { deletedCount: result.count },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Successfully deleted ${result.count} user(s).`,
+      count: result.count,
+    });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message || "Failed to delete users" }, { status: 500 });
+  }
+}
+

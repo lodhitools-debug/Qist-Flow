@@ -176,32 +176,47 @@ export async function DELETE(
   try {
     const session = await getSessionUser(req);
     if (!session || session.role !== "ADMIN") {
-      return NextResponse.json({ success: false, error: "Only admins can deactivate/delete users" }, { status: 403 });
+      return NextResponse.json({ success: false, error: "Only admins can delete users" }, { status: 403 });
     }
 
     if (session.userId === params.id) {
       return NextResponse.json({ success: false, error: "Cannot delete your own admin account" }, { status: 400 });
     }
 
-    // Perform soft deactivation to preserve historical assignments & recovery logs
-    const updated = await prisma.user.update({
+    const existingUser = await prisma.user.findUnique({
       where: { id: params.id },
-      data: { isActive: false },
+      select: { id: true, name: true, email: true, role: true },
     });
+
+    if (!existingUser) {
+      return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
+    }
+
+    // Try hard delete first, fallback to soft deactivation if relations prevent hard delete
+    try {
+      await prisma.user.delete({
+        where: { id: params.id },
+      });
+    } catch {
+      await prisma.user.update({
+        where: { id: params.id },
+        data: { isActive: false },
+      });
+    }
 
     await logActivity({
       userId: session.userId,
-      action: "USER_DEACTIVATE",
+      action: "USER_DELETE",
       entityType: "User",
       entityId: params.id,
-      details: { email: updated.email, name: updated.name },
+      details: { email: existingUser.email, name: existingUser.name, role: existingUser.role },
     });
 
     return NextResponse.json({
       success: true,
-      message: `User ${updated.name} has been deactivated successfully.`,
+      message: `User ${existingUser.name} has been removed successfully.`,
     });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message || "Failed to deactivate user" }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message || "Failed to delete user" }, { status: 500 });
   }
 }

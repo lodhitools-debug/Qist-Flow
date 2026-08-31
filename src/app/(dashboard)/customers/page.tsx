@@ -29,6 +29,7 @@ import {
   ArrowDown,
   Shield,
   X,
+  Trash2,
 } from "lucide-react";
 import clsx from "clsx";
 import { getStatusBadgeConfig } from "@/lib/installment-engine";
@@ -225,6 +226,73 @@ export default function CustomersPage() {
     }
   };
 
+  const handleDeleteCustomer = async (cust: any) => {
+    if (!confirm(`Are you sure you want to permanently delete customer "${cust.customerName}" (Account: ${cust.account})?`)) return;
+    try {
+      const res = await fetch(`/api/customers/${cust.id}`, { method: "DELETE" });
+      const data = await safeJsonParse(res);
+      if (res.ok && data.success) {
+        setBulkNotice(data.message || "Customer deleted successfully");
+        fetchCustomers();
+        setTimeout(() => setBulkNotice(null), 3000);
+      } else {
+        alert("Delete failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Are you sure you want to permanently delete ${selectedIds.length} selected customer(s)?`)) return;
+    try {
+      setBulkAssigning(true);
+      const res = await fetch("/api/customers", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+      const data = await safeJsonParse(res);
+      if (res.ok && data.success) {
+        setBulkNotice(data.message || `Deleted ${selectedIds.length} customer(s) successfully!`);
+        setSelectedIds([]);
+        fetchCustomers();
+        setTimeout(() => setBulkNotice(null), 4000);
+      } else {
+        alert("Bulk delete failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setBulkAssigning(false);
+    }
+  };
+
+  const handlePurgeAllCustomers = async () => {
+    const confirmText = prompt(
+      `⚠️ DANGER: This will permanently delete ALL customers, installments, and records from the database.\n\nType "DELETE" to confirm:`
+    );
+    if (confirmText !== "DELETE") return;
+    try {
+      const res = await fetch("/api/customers", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      const data = await safeJsonParse(res);
+      if (res.ok && data.success) {
+        alert(data.message || "All customer records have been purged.");
+        setSelectedIds([]);
+        fetchCustomers();
+      } else {
+        alert("Purge failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    }
+  };
+
   const handleOpenMessageModal = (cust: any) => {
     setSelectedCust(cust);
     const inst = cust.installments?.[0];
@@ -336,6 +404,19 @@ export default function CustomersPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Purge All Data Button (Admin Only) */}
+          {currentUser?.role === "ADMIN" && (
+            <button
+              type="button"
+              onClick={handlePurgeAllCustomers}
+              title="Delete all customer test data from database"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-100 min-h-[44px]"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+              <span>Purge All</span>
+            </button>
+          )}
+
           {/* Column Selector Button (Desktop Only) */}
           <button
             type="button"
@@ -475,6 +556,16 @@ export default function CustomersPage() {
 
             <button
               type="button"
+              disabled={bulkAssigning}
+              onClick={handleBulkDelete}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm disabled:opacity-50 transition-colors min-h-[40px]"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete ({selectedIds.length})</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setSelectedIds([])}
               className="text-xs text-slate-500 hover:underline px-2"
             >
@@ -605,11 +696,11 @@ export default function CustomersPage() {
                 </div>
 
                 {/* Action Buttons (Min 44px height for mobile touch target) */}
-                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800">
                   <button
                     type="button"
                     onClick={() => handleOpenMessageModal(cust)}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 min-h-[44px]"
+                    className="flex items-center justify-center gap-1 py-2 px-2 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 min-h-[44px]"
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span>WhatsApp</span>
@@ -617,11 +708,20 @@ export default function CustomersPage() {
 
                   <Link
                     href={`/customers/${cust.id}`}
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 min-h-[44px]"
+                    className="flex items-center justify-center gap-1 py-2 px-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 min-h-[44px]"
                   >
                     <Eye className="w-3.5 h-3.5" />
-                    <span>View Details</span>
+                    <span>View</span>
                   </Link>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCustomer(cust)}
+                    className="flex items-center justify-center gap-1 py-2 px-2 rounded-xl text-xs font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 min-h-[44px]"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </button>
                 </div>
               </div>
             );
@@ -907,6 +1007,14 @@ export default function CustomersPage() {
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCustomer(cust)}
+                          title="Delete Customer Record"
+                          className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 border border-rose-200 dark:border-rose-800 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   );

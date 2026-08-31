@@ -49,6 +49,8 @@ export default function UsersPage() {
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [managerFilter, setManagerFilter] = useState("ALL");
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [deletingUsers, setDeletingUsers] = useState(false);
 
   // Modal State (Create / Edit)
   const [modalOpen, setModalOpen] = useState(false);
@@ -241,6 +243,65 @@ export default function UsersPage() {
     }
   };
 
+  const handleToggleSelectUser = (id: string) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllUsers = () => {
+    const selectableUsers = users.filter((u) => u.id !== currentUser?.id && u.role !== "ADMIN");
+    if (selectedUserIds.length === selectableUsers.length && selectableUsers.length > 0) {
+      setSelectedUserIds([]);
+    } else {
+      setSelectedUserIds(selectableUsers.map((u) => u.id));
+    }
+  };
+
+  const handleDeleteUser = async (u: any) => {
+    if (u.id === currentUser?.id) {
+      alert("Cannot delete your own admin account.");
+      return;
+    }
+    if (!confirm(`Are you sure you want to permanently delete user "${u.name}" (${u.email})?`)) return;
+    try {
+      const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
+      const data = await safeJsonParse(res);
+      if (res.ok && data.success) {
+        setSelectedUserIds((prev) => prev.filter((id) => id !== u.id));
+        fetchUsers();
+      } else {
+        alert("Delete failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    }
+  };
+
+  const handleBulkDeleteUsers = async () => {
+    if (selectedUserIds.length === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedUserIds.length} selected user(s)?`)) return;
+    try {
+      setDeletingUsers(true);
+      const res = await fetch("/api/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userIds: selectedUserIds }),
+      });
+      const data = await safeJsonParse(res);
+      if (res.ok && data.success) {
+        setSelectedUserIds([]);
+        fetchUsers();
+      } else {
+        alert("Bulk delete failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setDeletingUsers(false);
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -361,12 +422,55 @@ export default function UsersPage() {
         </div>
       </div>
 
+      {/* Bulk Action Toolbar for Users */}
+      {currentUser?.role === "ADMIN" && selectedUserIds.length > 0 && (
+        <div className="bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 animate-in slide-in-from-top-2 shadow-md">
+          <div className="flex items-center gap-2 text-xs text-rose-900 dark:text-rose-200 font-bold">
+            <Users className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+            <span>{selectedUserIds.length} user(s) selected</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={deletingUsers}
+              onClick={handleBulkDeleteUsers}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm disabled:opacity-50 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{deletingUsers ? "Deleting..." : `Delete Selected (${selectedUserIds.length})`}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedUserIds([])}
+              className="text-xs text-slate-500 hover:underline px-2"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Users Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 font-bold uppercase text-[10px]">
               <tr>
+                {currentUser?.role === "ADMIN" && (
+                  <th className="py-3 px-3 w-8 text-center">
+                    <input
+                      type="checkbox"
+                      checked={
+                        selectedUserIds.length > 0 &&
+                        selectedUserIds.length === users.filter((u) => u.id !== currentUser?.id && u.role !== "ADMIN").length
+                      }
+                      onChange={handleSelectAllUsers}
+                      className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                    />
+                  </th>
+                )}
                 <th className="py-3 px-4">Staff Member</th>
                 <th className="py-3 px-4">Contact</th>
                 <th className="py-3 px-4">Role</th>
@@ -393,7 +497,21 @@ export default function UsersPage() {
                 </tr>
               ) : (
                 users.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                  <tr key={u.id} className={clsx("hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors", selectedUserIds.includes(u.id) && "bg-rose-50/40 dark:bg-rose-950/20")}>
+                    {/* Row Checkbox (Admin Only) */}
+                    {currentUser?.role === "ADMIN" && (
+                      <td className="py-3 px-3 text-center">
+                        {u.id !== currentUser?.id && u.role !== "ADMIN" && (
+                          <input
+                            type="checkbox"
+                            checked={selectedUserIds.includes(u.id)}
+                            onChange={() => handleToggleSelectUser(u.id)}
+                            className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                          />
+                        )}
+                      </td>
+                    )}
+
                     {/* User Info */}
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2.5">
@@ -502,6 +620,15 @@ export default function UsersPage() {
                         >
                           <Edit className="w-3.5 h-3.5" />
                         </button>
+                        {currentUser?.role === "ADMIN" && u.id !== currentUser?.id && (
+                          <button
+                            onClick={() => handleDeleteUser(u)}
+                            title="Delete User Record"
+                            className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60 border border-rose-200 dark:border-rose-800 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
