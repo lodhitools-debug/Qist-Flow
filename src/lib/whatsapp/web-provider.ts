@@ -248,8 +248,8 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
       await this.init();
     }
 
-    for (let i = 0; i < 30 && !this.sock; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 200));
+    for (let i = 0; i < 40 && !this.sock; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
     }
 
     if (!this.sock) {
@@ -257,14 +257,19 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
     }
 
     // Wait a brief moment for socket handshaking
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     try {
       const rawCode = await this.sock.requestPairingCode(cleanPhone);
       const code = rawCode?.match(/.{1,4}/g)?.join("-") || rawCode;
       this.pairingCode = code;
+      console.log(`\n========================================`);
+      console.log(`🔑 WhatsApp 8-Digit Pairing Code: ${code}`);
+      console.log(`📱 Enter this code on phone: ${cleanPhone}`);
+      console.log(`========================================\n`);
       return code;
     } catch (err: any) {
+      console.error("Pairing code error details:", err);
       throw new Error(err.message || "Failed to request pairing code from WhatsApp");
     }
   }

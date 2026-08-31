@@ -105,10 +105,8 @@ async function startWorker() {
             },
           });
         }
-      }
-
-      // 2. Handle QR Connect Request from Vercel
-      if (session?.status === "CONNECTING" && !session.qrCode && !waWebProvider.isConnected()) {
+      } else if (session?.status === "CONNECTING" && !session.qrCode && !waWebProvider.isConnected()) {
+        // 2. Handle QR Connect Request from Vercel
         const now = Date.now();
         if (now - lastConnectInit > 8000) {
           lastConnectInit = now;
