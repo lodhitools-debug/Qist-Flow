@@ -1,3 +1,14 @@
+import nodeCrypto from "node:crypto";
+try {
+  if (typeof globalThis.crypto === "undefined" || !(globalThis.crypto as any)?.subtle) {
+    Object.defineProperty(globalThis, "crypto", {
+      value: (nodeCrypto as any).webcrypto || nodeCrypto,
+      configurable: true,
+      writable: true,
+    });
+  }
+} catch {}
+
 process.env.IS_WORKER = "true";
 
 // Crash-proof global exception handlers (Never let worker die from network/socket timeouts)
@@ -90,18 +101,20 @@ async function startWorker() {
   // 4. Multi-User DB Watcher - polls every 2 seconds for connect/disconnect/logout requests from all users
   setInterval(async () => {
     try {
-      // Query ALL user sessions from DB (not just a single "default" session)
+      // Query ALL user sessions from DB (both user-isolated sessions and legacy "default" session)
       const allSessions = await prisma.whatsAppSession.findMany({
         select: {
+          id: true,
           userId: true,
           status: true,
           requestedPhone: true,
+          pairingCode: true,
           qrCode: true,
         },
       });
 
       for (const session of allSessions) {
-        const userId = session.userId;
+        const userId = session.userId || "default";
         const userSession = waSessionManager.getSession(userId);
         const now = Date.now();
         const lastInit = lastConnectInitPerUser.get(userId) || 0;
@@ -112,38 +125,45 @@ async function startWorker() {
             session.status === "DISCONNECTED" &&
             (userSession.isConnected() || userSession.getConnectionState() !== "DISCONNECTED")
           ) {
-            console.log(`🛑 [Worker] User ${userId}: Disconnect detected from DB.`);
+            console.log(`🛑 [Worker] Session ${session.id} (user: ${userId}): Disconnect detected from DB.`);
             await userSession.disconnect().catch(() => {});
           }
 
           // 2. Handle LOGGED_OUT / DELETE request from Vercel/DB
           else if (session.status === "LOGGED_OUT" && userSession.getConnectionState() !== "LOGGED_OUT") {
-            console.log(`🗑️ [Worker] User ${userId}: Logout detected from DB. Wiping credentials...`);
+            console.log(`🗑️ [Worker] Session ${session.id} (user: ${userId}): Logout detected from DB. Wiping credentials...`);
             await waSessionManager.logoutUser(userId).catch(() => {});
           }
 
-          // 3. Handle PAIRING_REQUESTED - generate pairing code for user
-          else if (session.status === "PAIRING_REQUESTED" && session.requestedPhone) {
-            if (now - lastInit > 5000) {
+          // 3. Handle PAIRING_REQUESTED / PAIRING - generate pairing code for user
+          else if (
+            (session.status === "PAIRING_REQUESTED" || session.status === "PAIRING") &&
+            session.requestedPhone &&
+            !session.pairingCode
+          ) {
+            if (now - lastInit > 4000) {
               lastConnectInitPerUser.set(userId, now);
-              console.log(`📲 [Worker] User ${userId}: Pairing code requested for ${session.requestedPhone}...`);
+              console.log(`📲 [Worker] Session ${session.id} (user: ${userId}): Pairing code requested for ${session.requestedPhone}...`);
               try {
                 const code = await waSessionManager.requestPairingCode(userId, session.requestedPhone);
-                console.log(`✅ [Worker] User ${userId}: Pairing code: ${code}`);
-                await prisma.whatsAppSession.update({
-                  where: { userId },
-                  data: {
-                    status: "PAIRING",
-                    pairingCode: code,
-                    errorMessage: null,
-                  },
-                });
+                console.log(`✅ [Worker] Session ${session.id} (user: ${userId}): Pairing code generated: ${code}`);
+                const updateData = {
+                  status: "PAIRING",
+                  pairingCode: code,
+                  errorMessage: null,
+                };
+                if (session.userId) {
+                  await prisma.whatsAppSession.update({ where: { userId: session.userId }, data: updateData }).catch(() => {});
+                }
+                await prisma.whatsAppSession.update({ where: { id: session.id }, data: updateData }).catch(() => {});
+                await prisma.whatsAppSession.update({ where: { id: "default" }, data: updateData }).catch(() => {});
               } catch (err: any) {
-                console.error(`❌ [Worker] User ${userId}: Pairing code failed:`, err.message);
-                await prisma.whatsAppSession.update({
-                  where: { userId },
-                  data: { status: "ERROR", errorMessage: err.message },
-                });
+                console.error(`❌ [Worker] Session ${session.id} (user: ${userId}): Pairing code failed:`, err.message);
+                const errorData = { status: "ERROR", errorMessage: err.message };
+                if (session.userId) {
+                  await prisma.whatsAppSession.update({ where: { userId: session.userId }, data: errorData }).catch(() => {});
+                }
+                await prisma.whatsAppSession.update({ where: { id: session.id }, data: errorData }).catch(() => {});
               }
             }
           }
@@ -157,20 +177,20 @@ async function startWorker() {
             if (now - lastInit > 3000) {
               lastConnectInitPerUser.set(userId, now);
               if (userSession.hasSavedAuth()) {
-                console.log(`🔄 [Worker] User ${userId}: Saved creds found. Reconnecting without QR...`);
+                console.log(`🔄 [Worker] Session ${session.id} (user: ${userId}): Saved creds found. Reconnecting without QR...`);
                 await userSession.init().catch((err) => {
-                  console.error(`❌ [Worker] User ${userId}: Reconnect error:`, err.message);
+                  console.error(`❌ [Worker] Session ${session.id} (user: ${userId}): Reconnect error:`, err.message);
                 });
               } else {
-                console.log(`🔄 [Worker] User ${userId}: Fresh connect requested. Generating QR...`);
+                console.log(`🔄 [Worker] Session ${session.id} (user: ${userId}): Fresh connect requested. Generating QR...`);
                 await waSessionManager.connectUser(userId, false).catch((err) => {
-                  console.error(`❌ [Worker] User ${userId}: QR connect error:`, err.message);
+                  console.error(`❌ [Worker] Session ${session.id} (user: ${userId}): QR connect error:`, err.message);
                 });
               }
             }
           }
         } catch (userErr: any) {
-          console.warn(`⚠️ [Worker] Error handling session for user ${userId}:`, userErr.message);
+          console.warn(`⚠️ [Worker] Error handling session ${session.id} for user ${userId}:`, userErr.message);
         }
       }
     } catch (err) {

@@ -1,7 +1,13 @@
-import crypto from "node:crypto";
-if (!globalThis.crypto || !(globalThis.crypto as any).subtle) {
-  (globalThis as any).crypto = (crypto as any).webcrypto || crypto;
-}
+import nodeCrypto from "node:crypto";
+try {
+  if (typeof globalThis.crypto === "undefined" || !(globalThis.crypto as any)?.subtle) {
+    Object.defineProperty(globalThis, "crypto", {
+      value: (nodeCrypto as any).webcrypto || nodeCrypto,
+      configurable: true,
+      writable: true,
+    });
+  }
+} catch {}
 
 import makeWASocket, {
   DisconnectReason,
@@ -115,36 +121,77 @@ export class UserWhatsAppSession {
    */
   public async updateDbSession(): Promise<void> {
     try {
-      await prisma.whatsAppSession.upsert({
-        where: { userId: this.userId },
-        update: {
-          status: this.connectionState,
-          qrCode: this.qrCodeDataUrl,
-          qrExpiresAt: this.qrExpiresAt,
-          pairingCode: this.pairingCode,
-          connectedPhone: this.connectedPhone,
-          connectedName: this.connectedName,
-          connectedAt: this.connectedAt,
-          lastDisconnectedAt: this.lastDisconnectedAt,
-          lastActiveAt: this.lastActiveAt || new Date(),
-          reconnectAttempts: this.reconnectAttempts,
-          errorMessage: this.errorMessage,
-        },
-        create: {
-          userId: this.userId,
-          status: this.connectionState,
-          qrCode: this.qrCodeDataUrl,
-          qrExpiresAt: this.qrExpiresAt,
-          pairingCode: this.pairingCode,
-          connectedPhone: this.connectedPhone,
-          connectedName: this.connectedName,
-          connectedAt: this.connectedAt,
-          lastDisconnectedAt: this.lastDisconnectedAt,
-          lastActiveAt: new Date(),
-          reconnectAttempts: this.reconnectAttempts,
-          errorMessage: this.errorMessage,
-        },
-      });
+      if (this.userId && this.userId !== "default") {
+        await prisma.whatsAppSession.upsert({
+          where: { userId: this.userId },
+          update: {
+            status: this.connectionState,
+            qrCode: this.qrCodeDataUrl,
+            qrExpiresAt: this.qrExpiresAt,
+            pairingCode: this.pairingCode,
+            connectedPhone: this.connectedPhone,
+            connectedName: this.connectedName,
+            connectedAt: this.connectedAt,
+            lastDisconnectedAt: this.lastDisconnectedAt,
+            lastActiveAt: this.lastActiveAt || new Date(),
+            reconnectAttempts: this.reconnectAttempts,
+            errorMessage: this.errorMessage,
+          },
+          create: {
+            userId: this.userId,
+            status: this.connectionState,
+            qrCode: this.qrCodeDataUrl,
+            qrExpiresAt: this.qrExpiresAt,
+            pairingCode: this.pairingCode,
+            connectedPhone: this.connectedPhone,
+            connectedName: this.connectedName,
+            connectedAt: this.connectedAt,
+            lastDisconnectedAt: this.lastDisconnectedAt,
+            lastActiveAt: new Date(),
+            reconnectAttempts: this.reconnectAttempts,
+            errorMessage: this.errorMessage,
+          },
+        }).catch(() => {});
+      }
+
+      // Update legacy "default" session if this is the default session or if this session is generating QR/Pairing/Connected
+      if (
+        this.userId === "default" ||
+        this.connectionState === "QR_READY" ||
+        this.connectionState === "CONNECTED" ||
+        this.connectionState === "PAIRING"
+      ) {
+        await prisma.whatsAppSession.upsert({
+          where: { id: "default" },
+          update: {
+            status: this.connectionState,
+            qrCode: this.qrCodeDataUrl,
+            qrExpiresAt: this.qrExpiresAt,
+            pairingCode: this.pairingCode,
+            connectedPhone: this.connectedPhone,
+            connectedName: this.connectedName,
+            connectedAt: this.connectedAt,
+            lastDisconnectedAt: this.lastDisconnectedAt,
+            lastActiveAt: this.lastActiveAt || new Date(),
+            reconnectAttempts: this.reconnectAttempts,
+            errorMessage: this.errorMessage,
+          },
+          create: {
+            id: "default",
+            status: this.connectionState,
+            qrCode: this.qrCodeDataUrl,
+            qrExpiresAt: this.qrExpiresAt,
+            pairingCode: this.pairingCode,
+            connectedPhone: this.connectedPhone,
+            connectedName: this.connectedName,
+            connectedAt: this.connectedAt,
+            lastDisconnectedAt: this.lastDisconnectedAt,
+            lastActiveAt: new Date(),
+            reconnectAttempts: this.reconnectAttempts,
+            errorMessage: this.errorMessage,
+          },
+        }).catch(() => {});
+      }
     } catch (err: any) {
       console.warn(`⚠️ [DB Sync Warning for User ${this.userId}]:`, err.message);
     }
@@ -322,7 +369,13 @@ export class UserWhatsAppSession {
    * Requests an 8-digit WhatsApp pairing code for phone-based pairing
    */
   public async requestPairingCode(phoneNumber: string): Promise<string> {
-    const cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
+    let cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
+    if (cleanPhone.startsWith("03") && cleanPhone.length === 11) {
+      cleanPhone = "92" + cleanPhone.slice(1);
+    } else if (cleanPhone.startsWith("3") && cleanPhone.length === 10) {
+      cleanPhone = "92" + cleanPhone;
+    }
+
     if (!cleanPhone || cleanPhone.length < 10) {
       throw new Error("Invalid phone number. Must include country code without symbols (e.g. 923001234567).");
     }
@@ -339,7 +392,7 @@ export class UserWhatsAppSession {
 
     await this.init();
 
-    // Wait for socket to be initialized
+    // Wait for socket to be initialized and WebSocket handshake to begin
     let tries = 0;
     while (!this.sock && tries < 40) {
       await new Promise((r) => setTimeout(r, 250));
@@ -349,6 +402,9 @@ export class UserWhatsAppSession {
     if (!this.sock) {
       throw new Error("WhatsApp socket initialization timed out.");
     }
+
+    // Wait 3.5 seconds for Baileys WebSocket handshake
+    await new Promise((r) => setTimeout(r, 3500));
 
     try {
       const code = await this.sock.requestPairingCode(cleanPhone);

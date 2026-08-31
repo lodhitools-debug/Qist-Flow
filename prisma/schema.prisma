@@ -266,8 +266,8 @@ model ReminderRule {
 
 model WhatsAppSession {
   id                  String               @id @default(cuid())
-  userId              String               @unique // Strictly one isolated WhatsApp session per user
-  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              String?              @unique // Isolated session per user, or null for legacy default
+  user                User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
   status              String               @default("NOT_CONNECTED") // NOT_CONNECTED, CONNECTING, QR_READY, PAIRING, CONNECTED, DISCONNECTED, RECONNECTING, LOGGED_OUT, ERROR
   qrCode              String?              @db.Text
   qrExpiresAt         DateTime?
