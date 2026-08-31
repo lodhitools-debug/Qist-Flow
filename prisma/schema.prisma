@@ -36,6 +36,10 @@ model User {
   customerAssignments CustomerAssignment[] @relation("AssignmentUser")
   assignmentsMade     CustomerAssignment[] @relation("AssignmentAssignedBy")
 
+  // WhatsApp Multi-User Session & Outbox
+  whatsAppSession     WhatsAppSession?
+  sentMessages        MessageQueue[]       @relation("MessageSender")
+
   // Activity & Audit
   activityLogs        ActivityLog[]
   excelImports        ExcelImport[]
@@ -260,22 +264,32 @@ model ReminderRule {
 }
 
 model WhatsAppSession {
-  id                  String               @id @default("default")
-  status              String               @default("DISCONNECTED") // DISCONNECTED, CONNECTING, QR_READY, PAIRING_REQUESTED, PAIRING_READY, CONNECTED, FAILED
+  id                  String               @id @default(cuid())
+  userId              String               @unique // Strictly one isolated WhatsApp session per user
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status              String               @default("NOT_CONNECTED") // NOT_CONNECTED, CONNECTING, QR_READY, PAIRING, CONNECTED, DISCONNECTED, RECONNECTING, LOGGED_OUT, ERROR
   qrCode              String?              @db.Text
+  qrExpiresAt         DateTime?
   pairingCode         String?
   requestedPhone      String?
   connectedPhone      String?
   connectedName       String?
   connectedAt         DateTime?
+  lastDisconnectedAt  DateTime?
   lastActiveAt        DateTime?            @default(now())
   reconnectAttempts   Int                  @default(0)
   errorMessage        String?
+  createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+
+  @@index([status])
+  @@index([userId])
 }
 
 model MessageQueue {
   id                  String               @id @default(cuid())
+  senderUserId        String?              // Officer/Admin whose WhatsApp sends this message
+  senderUser          User?                @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
   recipientPhone      String
   recipientName       String?
   recipientType       String               @default("CUSTOMER") // CUSTOMER, GUARANTOR_1, GUARANTOR_2
@@ -314,6 +328,7 @@ model MessageQueue {
   @@index([scheduledFor])
   @@index([recipientPhone])
   @@index([customerId])
+  @@index([senderUserId])
 }
 
 model MessageLog {

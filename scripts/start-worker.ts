@@ -11,7 +11,7 @@ process.on("unhandledRejection", (reason: any) => {
 
 import http from "http";
 import { prisma } from "../src/lib/prisma";
-import { waWebProvider } from "../src/lib/whatsapp/web-provider";
+import { waSessionManager } from "../src/lib/whatsapp/session-manager";
 import { processQueueWorker, getQueueStats } from "../src/lib/whatsapp/message-queue";
 import { runReminderScheduler } from "../src/lib/scheduler/reminder-cron";
 
@@ -54,15 +54,19 @@ async function runQueueStep() {
   }
 }
 
+// Track per-user last action timestamps to avoid duplicate actions
+const lastConnectInitPerUser = new Map<string, number>();
+
 async function startWorker() {
   console.log("==========================================");
   console.log("🚀 QistFlow WhatsApp & Reminder Background Worker");
+  console.log("   Multi-User Isolated Session Architecture");
   console.log("==========================================");
 
-  // 1. Initialize WhatsApp connection with clean retry
-  console.log("📱 Initializing WhatsApp Web Connection...");
-  await waWebProvider.init().catch((err) => {
-    console.warn("⚠️ Initial WhatsApp pairing awaiting QR scan or reconnect:", err.message);
+  // 1. Restore all previously active WhatsApp sessions from disk
+  console.log("📱 Restoring active WhatsApp sessions from disk...");
+  await waSessionManager.restoreAllActiveSessions().catch((err) => {
+    console.warn("⚠️ Session restore partial failure:", err.message);
   });
 
   // 2. Start Adaptive Queue Processing Loop (1-3s polling)
@@ -83,64 +87,98 @@ async function startWorker() {
     }
   }, 1000 * 60 * 15);
 
-  // 3b. Database Pairing & QR Watcher (Polls every 2 seconds for requests from Vercel)
-  let lastConnectInit = 0;
+  // 4. Multi-User DB Watcher - polls every 2 seconds for connect/disconnect/logout requests from all users
   setInterval(async () => {
     try {
-      const session = await prisma.whatsAppSession.findUnique({ where: { id: "default" } });
+      // Query ALL user sessions from DB (not just a single "default" session)
+      const allSessions = await prisma.whatsAppSession.findMany({
+        select: {
+          userId: true,
+          status: true,
+          requestedPhone: true,
+          qrCode: true,
+        },
+      });
 
-      // 1. Handle Disconnect Request from Vercel / DB
-      if (session?.status === "DISCONNECTED" && (waWebProvider.isConnected() || waWebProvider.getConnectionState() !== "DISCONNECTED")) {
-        console.log(`🛑 [Worker] Disconnect detected from DB. Cleaning up local session...`);
-        await waWebProvider.disconnect().catch(() => {});
-      }
-      // 2. Handle Pairing Code Request from Vercel
-      else if (session?.status === "PAIRING_REQUESTED" && session.requestedPhone) {
-        console.log(`📲 [Worker] Pairing code requested for ${session.requestedPhone}...`);
-        try {
-          const code = await waWebProvider.requestPairingCode(session.requestedPhone);
-          console.log(`✅ [Worker] Pairing code generated: ${code}`);
-          await prisma.whatsAppSession.update({
-            where: { id: "default" },
-            data: {
-              status: "PAIRING_READY",
-              pairingCode: code,
-              errorMessage: null,
-            },
-          });
-        } catch (err: any) {
-          console.error(`❌ [Worker] Pairing code generation failed:`, err.message);
-          await prisma.whatsAppSession.update({
-            where: { id: "default" },
-            data: {
-              status: "DISCONNECTED",
-              errorMessage: err.message,
-            },
-          });
-        }
-      }
-      // 3. Handle QR Connect Request from Vercel
-      else if (session?.status === "CONNECTING" && !session.qrCode && !waWebProvider.isConnected()) {
+      for (const session of allSessions) {
+        const userId = session.userId;
+        const userSession = waSessionManager.getSession(userId);
         const now = Date.now();
-        if (now - lastConnectInit > 3000) {
-          lastConnectInit = now;
-          if (waWebProvider.hasSavedAuth()) {
-            console.log(`🔄 [Worker] Saved credentials found. Reconnecting socket without wiping...`);
-            await waWebProvider.init().catch((err) => {
-              console.error("❌ [Worker] Reconnect error:", err.message);
-            });
-          } else {
-            console.log(`🔄 [Worker] Fresh connect requested from web. Generating QR code...`);
-            await waWebProvider.forceReconnect(true).catch((err) => {
-              console.error("❌ [Worker] QR reconnect error:", err.message);
-            });
+        const lastInit = lastConnectInitPerUser.get(userId) || 0;
+
+        try {
+          // 1. Handle DISCONNECTED request from Vercel/DB
+          if (
+            session.status === "DISCONNECTED" &&
+            (userSession.isConnected() || userSession.getConnectionState() !== "DISCONNECTED")
+          ) {
+            console.log(`🛑 [Worker] User ${userId}: Disconnect detected from DB.`);
+            await userSession.disconnect().catch(() => {});
           }
+
+          // 2. Handle LOGGED_OUT / DELETE request from Vercel/DB
+          else if (session.status === "LOGGED_OUT" && userSession.getConnectionState() !== "LOGGED_OUT") {
+            console.log(`🗑️ [Worker] User ${userId}: Logout detected from DB. Wiping credentials...`);
+            await waSessionManager.logoutUser(userId).catch(() => {});
+          }
+
+          // 3. Handle PAIRING_REQUESTED - generate pairing code for user
+          else if (session.status === "PAIRING_REQUESTED" && session.requestedPhone) {
+            if (now - lastInit > 5000) {
+              lastConnectInitPerUser.set(userId, now);
+              console.log(`📲 [Worker] User ${userId}: Pairing code requested for ${session.requestedPhone}...`);
+              try {
+                const code = await waSessionManager.requestPairingCode(userId, session.requestedPhone);
+                console.log(`✅ [Worker] User ${userId}: Pairing code: ${code}`);
+                await prisma.whatsAppSession.update({
+                  where: { userId },
+                  data: {
+                    status: "PAIRING",
+                    pairingCode: code,
+                    errorMessage: null,
+                  },
+                });
+              } catch (err: any) {
+                console.error(`❌ [Worker] User ${userId}: Pairing code failed:`, err.message);
+                await prisma.whatsAppSession.update({
+                  where: { userId },
+                  data: { status: "ERROR", errorMessage: err.message },
+                });
+              }
+            }
+          }
+
+          // 4. Handle CONNECTING request - generate QR code for user
+          else if (
+            session.status === "CONNECTING" &&
+            !session.qrCode &&
+            !userSession.isConnected()
+          ) {
+            if (now - lastInit > 3000) {
+              lastConnectInitPerUser.set(userId, now);
+              if (userSession.hasSavedAuth()) {
+                console.log(`🔄 [Worker] User ${userId}: Saved creds found. Reconnecting without QR...`);
+                await userSession.init().catch((err) => {
+                  console.error(`❌ [Worker] User ${userId}: Reconnect error:`, err.message);
+                });
+              } else {
+                console.log(`🔄 [Worker] User ${userId}: Fresh connect requested. Generating QR...`);
+                await waSessionManager.connectUser(userId, false).catch((err) => {
+                  console.error(`❌ [Worker] User ${userId}: QR connect error:`, err.message);
+                });
+              }
+            }
+          }
+        } catch (userErr: any) {
+          console.warn(`⚠️ [Worker] Error handling session for user ${userId}:`, userErr.message);
         }
       }
-    } catch (err) {}
+    } catch (err) {
+      // Silently ignore DB errors in watch loop
+    }
   }, 2000);
 
-  // 4. HTTP API Microservice for Vercel ↔ Worker communication
+  // 5. HTTP API Microservice for Vercel ↔ Worker communication
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     const pathname = url.pathname;
@@ -148,12 +186,15 @@ async function startWorker() {
     // Health check endpoint
     if (pathname === "/health" || pathname === "/api/health") {
       let queueStats = { queued: 0, sending: 0, sentToday: 0, failedToday: 0 };
-      let waInfo: { status: string; phone: string | null } = { status: "DISCONNECTED", phone: null };
+      let activeSessions: { userId: string; status: string; phone: string | null }[] = [];
 
       try {
         queueStats = await getQueueStats();
-        const info = await waWebProvider.getConnectedInfo();
-        waInfo = { status: info.status, phone: info.phone || null };
+        const sessionMap = waSessionManager.getAllActiveSessions();
+        for (const [uid, session] of Array.from(sessionMap.entries())) {
+          const info = await session.getConnectedInfo();
+          activeSessions.push({ userId: uid, status: info.status, phone: info.phone ?? null });
+        }
       } catch {}
 
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -161,11 +202,12 @@ async function startWorker() {
         JSON.stringify({
           status: "healthy",
           worker: "qistflow-background-worker",
+          architecture: "multi-user-isolated",
           uptimeSeconds: Math.floor(process.uptime()),
           timestamp: new Date().toISOString(),
           lastHeartbeat: lastHeartbeat.toISOString(),
           lastSuccessfulMessageAt: lastSuccessfulMessageAt ? lastSuccessfulMessageAt.toISOString() : null,
-          whatsapp: waInfo,
+          activeSessions,
           queue: queueStats,
         })
       );
@@ -180,35 +222,54 @@ async function startWorker() {
       return;
     }
 
-    if (req.method === "POST" && pathname === "/api/wa/send") {
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", async () => {
-        try {
-          const { phone, message } = JSON.parse(body || "{}");
-          if (!phone || !message) {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ success: false, error: "phone and message required" }));
-            return;
+    // Helper to read JSON body
+    const readBody = (): Promise<any> =>
+      new Promise((resolve) => {
+        let body = "";
+        req.on("data", (chunk) => (body += chunk));
+        req.on("end", () => {
+          try {
+            resolve(JSON.parse(body || "{}"));
+          } catch {
+            resolve({});
           }
-
-          const sendResult = await waWebProvider.sendDirectMessage(phone, message);
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(sendResult));
-        } catch (err: any) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: false, error: err.message }));
-        }
+        });
       });
-      return;
-    }
 
-    if (req.method === "POST" && pathname === "/api/wa/connect") {
+    // POST /api/wa/send - Send message through a specific user's WhatsApp
+    if (req.method === "POST" && pathname === "/api/wa/send") {
       try {
-        await waWebProvider.forceReconnect(true);
-        const qr = await waWebProvider.getQRCode();
+        const { userId, phone, message } = await readBody();
+        if (!phone || !message) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "phone and message required" }));
+          return;
+        }
+
+        let sendResult;
+        if (userId) {
+          sendResult = await waSessionManager.sendMessage(userId, {
+            recipientPhone: phone,
+            messageText: message,
+          });
+        } else {
+          // Fallback: find first connected session
+          const sessions = waSessionManager.getAllActiveSessions();
+          let sent = false;
+          for (const [uid, session] of Array.from(sessions.entries())) {
+            if (session.isConnected()) {
+              sendResult = await session.sendDirectMessage(phone, message);
+              sent = true;
+              break;
+            }
+          }
+          if (!sent) {
+            sendResult = { success: false, error: "No active WhatsApp session found", timestamp: new Date() };
+          }
+        }
+
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, status: "CONNECTING", qrCode: qr }));
+        res.end(JSON.stringify(sendResult));
       } catch (err: any) {
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: false, error: err.message }));
@@ -216,31 +277,97 @@ async function startWorker() {
       return;
     }
 
-    if (req.method === "POST" && pathname === "/api/wa/pairing-code") {
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", async () => {
-        try {
-          const { phone } = JSON.parse(body || "{}");
-          const code = await waWebProvider.requestPairingCode(phone);
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: true, pairingCode: code }));
-        } catch (err: any) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: false, error: err.message }));
-        }
-      });
-      return;
-    }
-
-    if (req.method === "POST" && pathname === "/api/wa/disconnect") {
+    // POST /api/wa/connect - Connect a specific user's WhatsApp (generate QR)
+    if (req.method === "POST" && pathname === "/api/wa/connect") {
       try {
-        await waWebProvider.disconnect();
+        const { userId } = await readBody();
+        if (!userId) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "userId required" }));
+          return;
+        }
+        const result = await waSessionManager.connectUser(userId, false);
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, message: "Disconnected" }));
+        res.end(JSON.stringify({ success: true, ...result }));
       } catch (err: any) {
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/wa/pairing-code - Request pairing code for a specific user
+    if (req.method === "POST" && pathname === "/api/wa/pairing-code") {
+      try {
+        const { userId, phone } = await readBody();
+        if (!userId || !phone) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "userId and phone required" }));
+          return;
+        }
+        const code = await waSessionManager.requestPairingCode(userId, phone);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, pairingCode: code }));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/wa/disconnect - Temporarily disconnect a user's session (keep credentials)
+    if (req.method === "POST" && pathname === "/api/wa/disconnect") {
+      try {
+        const { userId } = await readBody();
+        if (!userId) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "userId required" }));
+          return;
+        }
+        await waSessionManager.disconnectUser(userId);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, message: `User ${userId} disconnected (credentials preserved)` }));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+      return;
+    }
+
+    // POST /api/wa/logout - Full logout: wipe credentials and session for a user
+    if (req.method === "POST" && pathname === "/api/wa/logout") {
+      try {
+        const { userId } = await readBody();
+        if (!userId) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "userId required" }));
+          return;
+        }
+        await waSessionManager.logoutUser(userId);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, message: `User ${userId} logged out and credentials wiped` }));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+      return;
+    }
+
+    // GET /api/wa/status/:userId - Get specific user's WhatsApp status
+    if (req.method === "GET" && pathname.startsWith("/api/wa/status/")) {
+      try {
+        const userId = pathname.replace("/api/wa/status/", "");
+        if (!userId) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "userId required in path" }));
+          return;
+        }
+        const info = await waSessionManager.getUserStatus(userId);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(info));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err.message }));
       }
       return;
     }
@@ -259,6 +386,14 @@ async function startWorker() {
 
   server.listen(HTTP_PORT, () => {
     console.log(`🌐 Worker HTTP microservice listening on port ${HTTP_PORT}`);
+    console.log(`📋 Available endpoints:`);
+    console.log(`   POST /api/wa/connect       { userId }`);
+    console.log(`   POST /api/wa/disconnect    { userId }`);
+    console.log(`   POST /api/wa/logout        { userId }`);
+    console.log(`   POST /api/wa/pairing-code  { userId, phone }`);
+    console.log(`   POST /api/wa/send          { userId, phone, message }`);
+    console.log(`   GET  /api/wa/status/:userId`);
+    console.log(`   GET  /health`);
   });
 }
 

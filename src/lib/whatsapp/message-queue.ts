@@ -1,5 +1,5 @@
 import { prisma } from "../prisma";
-import { getWhatsAppProvider } from "./provider-factory";
+import { waSessionManager } from "./session-manager";
 import {
   generateMessageIdempotencyKey,
   generateGuarantorMessageKey,
@@ -16,6 +16,7 @@ export interface EnqueueMessageParams {
   customerId?: string;
   installmentId?: string;
   templateId?: string;
+  senderUserId?: string;
   messageType?:
     | "REMINDER"
     | "MANUAL"
@@ -41,7 +42,6 @@ export interface EnqueueResult {
 
 /**
  * Adds a single message to the persistent sending queue with duplicate protection
- * Priority: 100 = Manual, 50 = Guarantor Escalation, 20 = Normal Reminder, 10 = Scheduled Cron
  */
 export async function enqueueMessage(params: EnqueueMessageParams): Promise<EnqueueResult> {
   const cleanPhone = params.recipientPhone.replace(/[^0-9]/g, "");
@@ -51,14 +51,19 @@ export async function enqueueMessage(params: EnqueueMessageParams): Promise<Enqu
 
   const recipientType = params.recipientType || "CUSTOMER";
 
-  // Check customer opt-out
+  let senderUserId = params.senderUserId;
+
+  // Check customer opt-out and lookup assigned officer if senderUserId is not explicitly provided
   if (params.customerId) {
     const customer = await prisma.customer.findUnique({
       where: { id: params.customerId },
-      select: { optedOut: true },
+      select: { optedOut: true, assignedToUserId: true, assignedManagerId: true },
     });
     if (customer?.optedOut) {
       return { success: false, error: "Customer has opted out of WhatsApp messages" };
+    }
+    if (!senderUserId) {
+      senderUserId = customer?.assignedToUserId || customer?.assignedManagerId || undefined;
     }
   }
 
@@ -101,6 +106,7 @@ export async function enqueueMessage(params: EnqueueMessageParams): Promise<Enqu
     const queueItem = await prisma.messageQueue.upsert({
       where: { idempotencyKey },
       update: {
+        senderUserId: senderUserId || undefined,
         status: "QUEUED",
         errorMessage: null,
         scheduledFor: params.scheduledFor || new Date(),
@@ -108,6 +114,7 @@ export async function enqueueMessage(params: EnqueueMessageParams): Promise<Enqu
         approvalStatus,
       },
       create: {
+        senderUserId,
         recipientPhone: cleanPhone,
         recipientName: params.recipientName,
         recipientType,
@@ -164,22 +171,14 @@ export async function enqueueBatch(items: EnqueueMessageParams[]): Promise<{
 }
 
 /**
- * Processes a chunk of queued messages with priority sorting, approval checks, and rate-limit throttling
+ * Processes a chunk of queued messages with priority sorting, approval checks, and user-isolated WhatsApp dispatch
  */
 export async function processQueueWorker(maxBatchSize: number = 10): Promise<{
   processed: number;
   sent: number;
   failed: number;
 }> {
-  const provider = getWhatsAppProvider();
-  const connState = await provider.getConnectionState();
-
-  if (connState !== "CONNECTED") {
-    return { processed: 0, sent: 0, failed: 0 };
-  }
-
   // Get pending items ordered by priority DESC (manual priority 100 first, then guarantor 50, then reminders), then createdAt ASC
-  // EXCLUDE messages waiting for manager approval
   const pendingItems = await prisma.messageQueue.findMany({
     where: {
       status: "QUEUED",
@@ -197,17 +196,47 @@ export async function processQueueWorker(maxBatchSize: number = 10): Promise<{
   let sentCount = 0;
   let failedCount = 0;
 
-  const minDelay = parseInt(process.env.WHATSAPP_RATE_LIMIT_MIN_DELAY_MS || "3000", 10);
-  const maxDelay = parseInt(process.env.WHATSAPP_RATE_LIMIT_MAX_DELAY_MS || "8000", 10);
+  const minDelay = parseInt(process.env.WHATSAPP_RATE_LIMIT_MIN_DELAY_MS || "2000", 10);
+  const maxDelay = parseInt(process.env.WHATSAPP_RATE_LIMIT_MAX_DELAY_MS || "6000", 10);
 
   for (const item of pendingItems) {
+    // Determine which user's WhatsApp socket should dispatch this message
+    let senderId = item.senderUserId;
+
+    if (!senderId && item.customerId) {
+      const cust = await prisma.customer.findUnique({
+        where: { id: item.customerId },
+        select: { assignedToUserId: true, assignedManagerId: true },
+      });
+      senderId = cust?.assignedToUserId || cust?.assignedManagerId || null;
+    }
+
+    // If still no senderId, check for any connected admin session
+    if (!senderId) {
+      const adminSession = await prisma.whatsAppSession.findFirst({
+        where: { status: "CONNECTED" },
+        select: { userId: true },
+      });
+      senderId = adminSession?.userId || null;
+    }
+
+    if (!senderId) {
+      // No active WhatsApp sender available
+      continue;
+    }
+
+    const session = waSessionManager.getSession(senderId);
+    if (!session.isConnected()) {
+      // Officer's WhatsApp is not currently connected, skip without failing other officers
+      continue;
+    }
+
     // Mark as SENDING
     await prisma.messageQueue.update({
       where: { id: item.id },
       data: { status: "SENDING" },
     });
 
-    // Throttling: high-priority manual messages use short jitter, bulk reminders use normal jitter
     const isManualHighPriority = item.priority >= 100;
     const delayMs = isManualHighPriority
       ? 800
@@ -215,14 +244,8 @@ export async function processQueueWorker(maxBatchSize: number = 10): Promise<{
 
     await new Promise((resolve) => setTimeout(resolve, delayMs));
 
-    // Send via provider
-    const sendResult = await provider.sendMessage({
-      recipientPhone: item.recipientPhone,
-      messageText: item.messageText,
-      customerId: item.customerId || undefined,
-      installmentId: item.installmentId || undefined,
-      queueId: item.id,
-    });
+    // Send via specific user's WhatsApp socket
+    const sendResult = await session.sendDirectMessage(item.recipientPhone, item.messageText);
 
     if (sendResult.success) {
       sentCount++;

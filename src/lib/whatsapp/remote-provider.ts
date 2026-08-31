@@ -80,20 +80,7 @@ export class RemoteWhatsAppProvider implements IWhatsAppProvider {
     try {
       await this.request("/api/wa/connect", { method: "POST" });
     } catch (err: any) {
-      // Fallback: update DB session state to CONNECTING so UI knows it's pending
-      await prisma.whatsAppSession.upsert({
-        where: { id: "default" },
-        update: {
-          status: "CONNECTING",
-          errorMessage: err.message,
-          updatedAt: new Date(),
-        },
-        create: {
-          id: "default",
-          status: "CONNECTING",
-          errorMessage: err.message,
-        },
-      }).catch(() => {});
+      // Fallback: silently log — session rows are now managed by session-manager
       throw err;
     }
   }
@@ -150,12 +137,7 @@ export class RemoteWhatsAppProvider implements IWhatsAppProvider {
     try {
       await this.request("/api/wa/disconnect", { method: "POST" });
     } catch {
-      // Update DB session to DISCONNECTED
-      await prisma.whatsAppSession.upsert({
-        where: { id: "default" },
-        update: { status: "DISCONNECTED", qrCode: null, updatedAt: new Date() },
-        create: { id: "default", status: "DISCONNECTED" },
-      }).catch(() => {});
+      // Session rows are now managed by session-manager — skip legacy fallback upsert
     }
   }
 

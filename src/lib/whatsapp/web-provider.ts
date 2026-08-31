@@ -364,36 +364,10 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
   }
 
   private async updateDbSession(): Promise<void> {
-    try {
-      const isConn = this.connectionState === "CONNECTED";
-      await prisma.whatsAppSession.upsert({
-        where: { id: "default" },
-        create: {
-          id: "default",
-          status: this.connectionState as any,
-          qrCode: isConn ? null : this.qrCodeDataUrl,
-          pairingCode: isConn ? null : undefined,
-          connectedPhone: this.connectedPhone,
-          connectedName: this.connectedName,
-          connectedAt: this.connectedAt,
-          lastActiveAt: this.lastActiveAt || new Date(),
-          errorMessage: this.errorMessage,
-        },
-        update: {
-          status: this.connectionState as any,
-          qrCode: isConn ? null : this.qrCodeDataUrl,
-          pairingCode: isConn ? null : undefined,
-          connectedPhone: this.connectedPhone,
-          connectedName: this.connectedName,
-          connectedAt: this.connectedAt,
-          lastActiveAt: this.lastActiveAt || new Date(),
-          errorMessage: this.errorMessage,
-        },
-      });
-      console.log(`📡 [DB Sync] WhatsApp session: status=${this.connectionState}, phone=${this.connectedPhone || "none"}`);
-    } catch (e: any) {
-      console.warn("⚠️ [DB Sync Warning]:", e.message);
-    }
+    // NOTE: This legacy provider's DB sync is disabled.
+    // Session state is now fully managed by UserWhatsAppSession / WhatsAppSessionManager.
+    // The web-provider singleton is retained for backwards-compatible imports only.
+    console.log(`📡 [Legacy web-provider] status=${this.connectionState}, phone=${this.connectedPhone || "none"}`);
   }
 }
 

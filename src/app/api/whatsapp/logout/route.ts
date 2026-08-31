@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { logActivity } from "@/lib/audit";
+import fs from "fs";
+import path from "path";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +14,10 @@ export async function POST(req: NextRequest) {
   try {
     const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
 
-    // 1. If AlwaysData remote worker is configured, notify it with userId
+    // 1. If AlwaysData remote worker is configured, notify it to logout and purge
     if (serviceUrl) {
       try {
-        await fetch(`${serviceUrl}/api/wa/disconnect`, {
+        await fetch(`${serviceUrl}/api/wa/logout`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -24,25 +26,38 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({ userId: user.userId }),
         });
       } catch (err: any) {
-        console.warn(`[AlwaysData Worker Disconnect Warning for ${user.userId}]:`, err.message);
+        console.warn(`[AlwaysData Worker Logout Warning for ${user.userId}]:`, err.message);
       }
     }
 
-    // 2. Set DB session to DISCONNECTED for this user (keeps saved auth on disk)
+    // 2. Delete local session directory on server if present
+    try {
+      const userSessionDir = path.join(process.cwd(), "whatsapp_sessions", user.userId);
+      if (fs.existsSync(userSessionDir)) {
+        fs.rmSync(userSessionDir, { recursive: true, force: true });
+      }
+    } catch {}
+
+    // 3. Reset DB session record to LOGGED_OUT and purge credentials
     await prisma.whatsAppSession.upsert({
       where: { userId: user.userId },
       update: {
-        status: "DISCONNECTED",
+        status: "LOGGED_OUT",
         qrCode: null,
         qrExpiresAt: null,
         pairingCode: null,
+        requestedPhone: null,
+        connectedPhone: null,
+        connectedName: null,
+        connectedAt: null,
         lastDisconnectedAt: new Date(),
+        reconnectAttempts: 0,
         errorMessage: null,
         updatedAt: new Date(),
       },
       create: {
         userId: user.userId,
-        status: "DISCONNECTED",
+        status: "LOGGED_OUT",
         qrCode: null,
         pairingCode: null,
         requestedPhone: null,
@@ -51,25 +66,24 @@ export async function POST(req: NextRequest) {
 
     await logActivity({
       userId: user.userId,
-      action: "WHATSAPP_DISCONNECT",
+      action: "WHATSAPP_LOGOUT_REMOVE",
       details: { serviceUrl: serviceUrl || "Supabase DB sync" },
     }).catch(() => {});
 
     return NextResponse.json({
       success: true,
-      status: "DISCONNECTED",
-      message: "WhatsApp session disconnected temporarily (saved credentials preserved).",
+      status: "LOGGED_OUT",
+      message: "WhatsApp session logged out and credentials purged successfully.",
     });
   } catch (error: any) {
-    console.error(`[WhatsApp Disconnect Error] userId=${user.userId}:`, error.message);
+    console.error(`[WhatsApp Logout Error] userId=${user.userId}:`, error.message);
     return NextResponse.json(
       {
         success: false,
-        error: "WHATSAPP_DISCONNECT_FAILED",
-        message: error.message || "Failed to disconnect WhatsApp session",
+        error: "WHATSAPP_LOGOUT_FAILED",
+        message: error.message || "Failed to log out WhatsApp session",
       },
       { status: 500 }
     );
   }
 }
-

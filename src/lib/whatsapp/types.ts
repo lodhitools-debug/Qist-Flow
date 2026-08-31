@@ -1,18 +1,28 @@
 export type WhatsAppConnectionState =
-  | "DISCONNECTED"
+  | "NOT_CONNECTED"
   | "CONNECTING"
   | "QR_READY"
+  | "PAIRING"
   | "CONNECTED"
-  | "FAILED";
+  | "DISCONNECTED"
+  | "RECONNECTING"
+  | "LOGGED_OUT"
+  | "ERROR"
+  | "FAILED"; // Legacy alias for ERROR — kept for backward compat
 
 export interface WhatsAppConnectedInfo {
-  phone?: string;
-  name?: string;
-  connectedAt?: Date;
-  lastActiveAt?: Date;
+  userId?: string;
+  phone?: string | null;
+  name?: string | null;
+  connectedAt?: Date | null;
+  lastDisconnectedAt?: Date | null;
+  lastActiveAt?: Date | null;
   status: WhatsAppConnectionState;
   qrCode?: string | null;
+  qrExpiresAt?: Date | null;
+  pairingCode?: string | null;
   errorMessage?: string | null;
+  reconnectAttempts?: number;
 }
 
 export interface WhatsAppMessagePayload {
@@ -21,6 +31,7 @@ export interface WhatsAppMessagePayload {
   customerId?: string;
   installmentId?: string;
   queueId?: string;
+  senderUserId?: string;
 }
 
 export interface WhatsAppSendResult {
@@ -30,13 +41,19 @@ export interface WhatsAppSendResult {
   timestamp: Date;
 }
 
+/**
+ * Legacy interface — kept for backward compatibility with web-provider, cloud-provider, remote-provider.
+ * New code should use UserWhatsAppSession / WhatsAppSessionManager directly.
+ */
 export interface IWhatsAppProvider {
   name: string;
   init(): Promise<void>;
+  isConnected?(): boolean;
   getConnectionState(): Promise<WhatsAppConnectionState>;
   getQRCode(): Promise<string | null>;
   getConnectedInfo(): Promise<WhatsAppConnectedInfo>;
-  disconnect(): Promise<void>;
-  reconnect(): Promise<void>;
   sendMessage(payload: WhatsAppMessagePayload): Promise<WhatsAppSendResult>;
+  sendDirectMessage?(phone: string, message: string): Promise<WhatsAppSendResult>;
+  disconnect(): Promise<void>;
+  requestPairingCode?(phone: string): Promise<string>;
 }

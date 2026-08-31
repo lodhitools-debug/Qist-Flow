@@ -171,16 +171,9 @@ async function main() {
 
   console.log("✅ Initialized System Settings");
 
-  // 5. Initial WhatsApp Session entry
-  await prisma.whatsAppSession.upsert({
-    where: { id: "default" },
-    update: {},
-    create: {
-      id: "default",
-      status: "DISCONNECTED",
-      reconnectAttempts: 0,
-    },
-  });
+  // NOTE: WhatsApp sessions are now user-scoped.
+  // The WhatsAppSessionManager creates sessions automatically when a user connects.
+  // No default/global session seed needed.
 
   console.log("🎉 Production seed completed successfully!");
 }

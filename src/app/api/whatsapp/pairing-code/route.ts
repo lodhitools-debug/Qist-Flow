@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const { user, errorResponse } = await requireAuth(req);
+  if (errorResponse) return errorResponse;
+
   try {
-    const session = await getSessionUser(req);
     const body = await req.json().catch(() => ({}));
     const { phone } = body;
 
@@ -24,19 +26,19 @@ export async function POST(req: NextRequest) {
       cleanPhone = "92" + cleanPhone;
     }
 
-    // 1. Write pairing request to Supabase DB so any worker (AlwaysData or local) picks it up
+    // 1. Write pairing request to Supabase DB for this user
     await prisma.whatsAppSession.upsert({
-      where: { id: "default" },
+      where: { userId: user.userId },
       update: {
-        status: "PAIRING_REQUESTED",
+        status: "PAIRING",
         requestedPhone: cleanPhone,
         pairingCode: null,
         errorMessage: null,
         updatedAt: new Date(),
       },
       create: {
-        id: "default",
-        status: "PAIRING_REQUESTED",
+        userId: user.userId,
+        status: "PAIRING",
         requestedPhone: cleanPhone,
       },
     });
@@ -53,17 +55,17 @@ export async function POST(req: NextRequest) {
             "Content-Type": "application/json",
             "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "",
           },
-          body: JSON.stringify({ phone: cleanPhone }),
+          body: JSON.stringify({ userId: user.userId, phone: cleanPhone }),
           signal: controller.signal,
         }).catch(() => {});
         clearTimeout(timeoutId);
       } catch {}
     }
 
-    // 3. Poll DB for up to 8 seconds awaiting worker to generate pairing code
-    for (let i = 0; i < 8; i++) {
+    // 3. Poll DB for up to 6 seconds awaiting worker to generate pairing code
+    for (let i = 0; i < 6; i++) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      const updated = await prisma.whatsAppSession.findUnique({ where: { id: "default" } });
+      const updated = await prisma.whatsAppSession.findUnique({ where: { userId: user.userId } });
       if (updated?.pairingCode) {
         return NextResponse.json({
           success: true,
@@ -85,9 +87,11 @@ export async function POST(req: NextRequest) {
       message: "Pairing code requested. Generating code from background worker...",
     });
   } catch (error: any) {
+    console.error(`[WhatsApp Pairing Code Error] userId=${user.userId}:`, error.message);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to request pairing code" },
       { status: 500 }
     );
   }
 }
+
