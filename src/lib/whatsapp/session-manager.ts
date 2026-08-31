@@ -1,3 +1,8 @@
+import crypto from "node:crypto";
+if (!globalThis.crypto || !(globalThis.crypto as any).subtle) {
+  (globalThis as any).crypto = (crypto as any).webcrypto || crypto;
+}
+
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
@@ -17,6 +22,7 @@ import {
   WhatsAppMessagePayload,
   WhatsAppSendResult,
 } from "./types";
+
 
 /**
  * Encapsulates an isolated WhatsApp Baileys socket session for a specific user
