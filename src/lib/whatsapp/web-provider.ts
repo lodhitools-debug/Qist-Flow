@@ -66,7 +66,7 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
         logger,
         printQRInTerminal: false,
         auth: state,
-        browser: Browsers.ubuntu("Chrome"),
+        browser: Browsers.windows("Chrome"),
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 25000,
