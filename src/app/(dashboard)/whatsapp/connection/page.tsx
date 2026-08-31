@@ -130,12 +130,18 @@ export default function WhatsAppConnectionPage() {
       const data = await safeJsonParse(res);
 
       if (data) {
-        setStatus(data.status || "CONNECTING");
-        setQrCode(data.qrCode || null);
-        setNotice(null);
+        if (data.success === false || data.error) {
+          setNotice("Error: " + (data.message || data.error || "Unknown backend error"));
+          setStatus("ERROR");
+        } else {
+          setStatus(data.status || "CONNECTING");
+          setQrCode(data.qrCode || null);
+          setNotice(null);
+        }
       }
     } catch (err: any) {
-      setNotice(null);
+      console.error("Connect error:", err);
+      setNotice("Network Error: " + err.message);
     } finally {
       setLoading(false);
     }
