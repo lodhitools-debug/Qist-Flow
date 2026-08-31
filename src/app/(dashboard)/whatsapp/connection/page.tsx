@@ -97,23 +97,16 @@ export default function WhatsAppConnectionPage() {
   const handleConnect = async () => {
     try {
       setLoading(true);
-      setNotice("Initializing WhatsApp session. Awaiting QR code from AlwaysData worker...");
       const res = await fetch("/api/whatsapp/connect", { method: "POST" });
       const data = await safeJsonParse(res);
 
-      if (data && data.success) {
+      if (data) {
         setStatus(data.status || "CONNECTING");
         setQrCode(data.qrCode || null);
-        setNotice(data.message || "Initializing WhatsApp session. Please scan the QR code...");
-      } else if (data && data.status === "CONNECTING") {
-        setStatus("CONNECTING");
-        setQrCode(data.qrCode || null);
-        setNotice("Worker connecting... Please wait a moment for the QR code to stream.");
-      } else {
-        setNotice(data.error ? `Status: ${data.error}` : "WhatsApp worker initializing. Please wait...");
+        setNotice(null);
       }
     } catch (err: any) {
-      setNotice("Connection note: " + err.message);
+      setNotice(null);
     } finally {
       setLoading(false);
     }

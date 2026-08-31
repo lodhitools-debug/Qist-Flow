@@ -57,13 +57,19 @@ export async function POST(req: NextRequest) {
       where: { id: "default" },
       update: {
         status: targetStatus,
-        errorMessage: workerError,
+        errorMessage: null,
+        pairingCode: null,
+        requestedPhone: null,
+        qrCode: null,
         updatedAt: new Date(),
       },
       create: {
         id: "default",
         status: targetStatus,
-        errorMessage: workerError,
+        errorMessage: null,
+        pairingCode: null,
+        requestedPhone: null,
+        qrCode: null,
       },
     });
 

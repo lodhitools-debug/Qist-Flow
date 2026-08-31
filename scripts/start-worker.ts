@@ -108,10 +108,10 @@ async function startWorker() {
       } else if (session?.status === "CONNECTING" && !session.qrCode && !waWebProvider.isConnected()) {
         // 2. Handle QR Connect Request from Vercel
         const now = Date.now();
-        if (now - lastConnectInit > 8000) {
+        if (now - lastConnectInit > 5000) {
           lastConnectInit = now;
-          console.log(`🔄 [Worker] Connect requested from web. Initializing QR code streaming...`);
-          await waWebProvider.forceReconnect().catch((err) => {
+          console.log(`🔄 [Worker] Connect requested from web. Initializing fresh QR code streaming...`);
+          await waWebProvider.forceReconnect(true).catch((err) => {
             console.error("❌ [Worker] QR reconnect error:", err.message);
           });
         }

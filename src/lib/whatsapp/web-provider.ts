@@ -24,6 +24,7 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
   private sock: WASocket | null = null;
   private qrCodeString: string | null = null;
   private qrCodeDataUrl: string | null = null;
+  private pairingCode: string | null = null;
   private connectionState: WhatsAppConnectionState = "DISCONNECTED";
   private connectedPhone: string | null = null;
   private connectedName: string | null = null;
@@ -210,7 +211,7 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
     return this.connectionState === "CONNECTED" && !!this.sock;
   }
 
-  async forceReconnect(): Promise<void> {
+  async forceReconnect(clearAuth: boolean = false): Promise<void> {
     try {
       if (this.sock) {
         this.sock.ev.removeAllListeners("connection.update");
@@ -222,6 +223,11 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
       this.qrCodeString = null;
       this.qrCodeDataUrl = null;
       this.connectionState = "CONNECTING";
+
+      if (clearAuth && fs.existsSync(this.sessionDir)) {
+        fs.rmSync(this.sessionDir, { recursive: true, force: true });
+        fs.mkdirSync(this.sessionDir, { recursive: true });
+      }
     } catch {}
     await this.init();
   }
