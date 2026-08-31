@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
       success: true,
       status: computedStatus,
       qrCode: isConnected ? null : (dbSession?.qrCode || null),
+      pairingCode: isConnected ? null : (dbSession?.pairingCode || null),
       phone: dbSession?.connectedPhone || null,
       name: dbSession?.connectedName || null,
       connectedAt: dbSession?.connectedAt || null,

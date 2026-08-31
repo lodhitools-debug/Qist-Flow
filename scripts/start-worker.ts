@@ -1,6 +1,7 @@
 process.env.IS_WORKER = "true";
 
 import http from "http";
+import { prisma } from "../src/lib/prisma";
 import { waWebProvider } from "../src/lib/whatsapp/web-provider";
 import { processQueueWorker, getQueueStats } from "../src/lib/whatsapp/message-queue";
 import { runReminderScheduler } from "../src/lib/scheduler/reminder-cron";
@@ -73,6 +74,37 @@ async function startWorker() {
       console.error("[Reminder Scheduler Error]:", err);
     }
   }, 1000 * 60 * 15);
+
+  // 3b. Database Pairing Watcher (Polls every 2 seconds for pairing requests from Vercel)
+  setInterval(async () => {
+    try {
+      const session = await prisma.whatsAppSession.findUnique({ where: { id: "default" } });
+      if (session?.status === "PAIRING_REQUESTED" && session.requestedPhone) {
+        console.log(`📲 [Worker] Pairing code requested for ${session.requestedPhone}...`);
+        try {
+          const code = await waWebProvider.requestPairingCode(session.requestedPhone);
+          console.log(`✅ [Worker] Pairing code generated: ${code}`);
+          await prisma.whatsAppSession.update({
+            where: { id: "default" },
+            data: {
+              status: "PAIRING_READY",
+              pairingCode: code,
+              errorMessage: null,
+            },
+          });
+        } catch (err: any) {
+          console.error(`❌ [Worker] Pairing code generation failed:`, err.message);
+          await prisma.whatsAppSession.update({
+            where: { id: "default" },
+            data: {
+              status: "DISCONNECTED",
+              errorMessage: err.message,
+            },
+          });
+        }
+      }
+    } catch (err) {}
+  }, 2000);
 
   // 4. HTTP API Microservice for Vercel ↔ AlwaysData secure communication
   const server = http.createServer(async (req, res) => {

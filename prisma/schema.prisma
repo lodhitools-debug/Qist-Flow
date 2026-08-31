@@ -261,12 +261,14 @@ model ReminderRule {
 
 model WhatsAppSession {
   id                  String               @id @default("default")
-  status              String               @default("DISCONNECTED") // DISCONNECTED, CONNECTING, QR_READY, CONNECTED, FAILED
-  qrCode              String?
+  status              String               @default("DISCONNECTED") // DISCONNECTED, CONNECTING, QR_READY, PAIRING_REQUESTED, PAIRING_READY, CONNECTED, FAILED
+  qrCode              String?              @db.Text
+  pairingCode         String?
+  requestedPhone      String?
   connectedPhone      String?
   connectedName       String?
   connectedAt         DateTime?
-  lastActiveAt        DateTime?
+  lastActiveAt        DateTime?            @default(now())
   reconnectAttempts   Int                  @default(0)
   errorMessage        String?
   updatedAt           DateTime             @updatedAt
@@ -375,3 +377,5 @@ model BackupSnapshot {
 
   @@index([createdAt])
 }
+
+

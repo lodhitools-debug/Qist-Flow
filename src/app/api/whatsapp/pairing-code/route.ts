@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
-import { waWebProvider } from "@/lib/whatsapp/web-provider";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -17,49 +17,73 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
+    let cleanPhone = phone.replace(/[^0-9]/g, "");
+    if (cleanPhone.startsWith("03") && cleanPhone.length === 11) {
+      cleanPhone = "92" + cleanPhone.substring(1);
+    } else if (cleanPhone.startsWith("3") && cleanPhone.length === 10) {
+      cleanPhone = "92" + cleanPhone;
+    }
 
-    // 1. If AlwaysData remote worker is configured, request pairing code from it
+    // 1. Write pairing request to Supabase DB so any worker (AlwaysData or local) picks it up
+    await prisma.whatsAppSession.upsert({
+      where: { id: "default" },
+      update: {
+        status: "PAIRING_REQUESTED",
+        requestedPhone: cleanPhone,
+        pairingCode: null,
+        errorMessage: null,
+        updatedAt: new Date(),
+      },
+      create: {
+        id: "default",
+        status: "PAIRING_REQUESTED",
+        requestedPhone: cleanPhone,
+      },
+    });
+
+    // 2. Also notify AlwaysData worker endpoint if configured
+    const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
     if (serviceUrl) {
       try {
-        const workerRes = await fetch(`${serviceUrl}/api/wa/pairing-code`, {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        await fetch(`${serviceUrl}/api/wa/pairing-code`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "",
           },
-          body: JSON.stringify({ phone }),
-        });
+          body: JSON.stringify({ phone: cleanPhone }),
+          signal: controller.signal,
+        }).catch(() => {});
+        clearTimeout(timeoutId);
+      } catch {}
+    }
 
-        if (workerRes.ok) {
-          const workerData = await workerRes.json();
-          if (workerData.pairingCode) {
-            return NextResponse.json({
-              success: true,
-              pairingCode: workerData.pairingCode,
-              message: "Pairing code generated successfully from worker",
-            });
-          }
-        }
-      } catch (err: any) {
-        console.warn("[AlwaysData Pairing Code Warning]:", err.message);
+    // 3. Poll DB for up to 8 seconds awaiting worker to generate pairing code
+    for (let i = 0; i < 8; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const updated = await prisma.whatsAppSession.findUnique({ where: { id: "default" } });
+      if (updated?.pairingCode) {
+        return NextResponse.json({
+          success: true,
+          pairingCode: updated.pairingCode,
+          message: "Pairing code generated successfully!",
+        });
+      }
+      if (updated?.errorMessage) {
+        return NextResponse.json(
+          { success: false, error: updated.errorMessage },
+          { status: 400 }
+        );
       }
     }
 
-    // 2. Direct provider fallback
-    try {
-      const pairingCode = await waWebProvider.requestPairingCode(phone);
-      return NextResponse.json({
-        success: true,
-        pairingCode,
-        message: "Pairing code generated successfully",
-      });
-    } catch (localErr: any) {
-      return NextResponse.json(
-        { success: false, error: localErr.message || "Failed to generate pairing code" },
-        { status: 500 }
-      );
-    }
+    return NextResponse.json({
+      success: true,
+      pending: true,
+      message: "Pairing code requested. Generating code from background worker...",
+    });
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error.message || "Failed to request pairing code" },

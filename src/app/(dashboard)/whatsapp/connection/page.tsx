@@ -58,6 +58,9 @@ export default function WhatsAppConnectionPage() {
       if (data && data.status) {
         setStatus(data.status || "DISCONNECTED");
         setQrCode(data.qrCode || null);
+        if (data.pairingCode) {
+          setPairingCode(data.pairingCode);
+        }
         setPhone(data.phone || null);
         setConnectedName(data.name || null);
         setConnectedAt(data.connectedAt || null);
