@@ -28,40 +28,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 2. If AlwaysData remote worker is configured via WHATSAPP_SERVICE_URL, notify it with userId
-    if (serviceUrl) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
-
-        const workerRes = await fetch(`${serviceUrl}/api/wa/connect`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "",
-          },
-          body: JSON.stringify({ userId: user.userId }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (workerRes.ok) {
-          workerConnected = true;
-          const data = await workerRes.json();
-          if (data.qrCode) {
-            return NextResponse.json({
-              success: true,
-              status: "QR_READY",
-              qrCode: data.qrCode,
-              message: "QR code generated!",
-            });
-          }
-        }
-      } catch (err: any) {
-        console.warn(`[AlwaysData Worker Connect Warning for ${user.userId}]:`, err.message);
-      }
-    }
+    // 2. Direct fetch removed to rely 100% on DB polling.
+    // The background worker on AlwaysData or Local PC will detect CONNECTING status and generate QR.
 
     // 3. Update DB session status to CONNECTING for worker polling loop
     const updatedSession = await prisma.whatsAppSession.upsert({
