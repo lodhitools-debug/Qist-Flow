@@ -90,24 +90,23 @@ async function runDbWatchLoop() {
       const onCooldown = now - lastAction < ACTION_COOLDOWN_MS;
 
       try {
-        // 1. Disconnect request from Vercel
+        // 1. Disconnect request from Vercel — only act if currently active/connected
         if (
           session.status === "DISCONNECTED" &&
-          userSession.getConnectionState() !== "DISCONNECTED" &&
-          userSession.getConnectionState() !== "LOGGED_OUT"
+          (userSession.isConnected() || ["CONNECTED", "QR_READY", "PAIRING", "CONNECTING", "RECONNECTING"].includes(userSession.getConnectionState()))
         ) {
-          console.log(`🛑 [Worker] Disconnecting user: ${userId}`);
+          console.log(`🛑 [Worker] Disconnecting active session for user: ${userId}`);
           lastActionPerUser.set(userId, now);
           await userSession.disconnect().catch(() => {});
         }
 
-        // 2. Logout / Change Number request
+        // 2. Logout / Change Number request — only act if currently active/connected
         else if (
           session.status === "LOGGED_OUT" &&
-          userSession.getConnectionState() !== "LOGGED_OUT" &&
+          (userSession.isConnected() || ["CONNECTED", "QR_READY", "PAIRING", "CONNECTING", "RECONNECTING"].includes(userSession.getConnectionState())) &&
           !onCooldown
         ) {
-          console.log(`🗑️ [Worker] Logging out user: ${userId}`);
+          console.log(`🗑️ [Worker] Logging out active session for user: ${userId}`);
           lastActionPerUser.set(userId, now);
           await waSessionManager.logoutUser(userId).catch(() => {});
         }

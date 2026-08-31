@@ -165,7 +165,7 @@ export class UserWhatsAppSession {
 
   // ── Internal helpers ──────────────────────────────────────────────────────
 
-  private clearTimers() {
+  public clearTimers() {
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -176,7 +176,7 @@ export class UserWhatsAppSession {
     }
   }
 
-  private destroySocket() {
+  public destroySocket() {
     if (this.sock) {
       try {
         this.sock.ev.removeAllListeners();
@@ -591,11 +591,16 @@ class WhatsAppSessionManager {
         }
 
         if (forceFresh) {
-          // Full logout to wipe credentials
-          await session.logout();
-          // Re-create session object (isLoggedOut is now true on old one)
-          this.sessions.set(userId, new UserWhatsAppSession(userId));
-          const fresh = this.sessions.get(userId)!;
+          // Destroy existing socket and clear credentials folder on disk without DB LOGGED_OUT flicker
+          session.destroySocket();
+          session.clearTimers();
+          try {
+            if (fs.existsSync(session.sessionDir)) {
+              fs.rmSync(session.sessionDir, { recursive: true, force: true });
+            }
+          } catch {}
+          this.sessions.delete(userId);
+          const fresh = this.getSession(userId);
           await fresh.init();
           await new Promise((r) => setTimeout(r, 500));
           const info = await fresh.getConnectedInfo();
