@@ -240,8 +240,10 @@ export class UserWhatsAppSession {
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
           const isRegistered = !!(state.creds?.registered || state.creds?.me || this.hasSavedAuth());
           const isRestartRequired = statusCode === DisconnectReason.restartRequired || statusCode === 515;
+          // 408 = QR code timed out without being scanned (not an error, just need new QR)
+          const isQrTimeout = statusCode === 408;
 
-          console.log(`⚠️ [User ${this.userId}] Socket closed: statusCode=${statusCode}, shouldReconnect=${shouldReconnect}, isRegistered=${isRegistered}`);
+          console.log(`⚠️ [User ${this.userId}] Socket closed: statusCode=${statusCode}, shouldReconnect=${shouldReconnect}, isRegistered=${isRegistered}, isQrTimeout=${isQrTimeout}`);
 
           if (statusCode === DisconnectReason.loggedOut) {
             // Unlinked from WhatsApp mobile app
@@ -261,6 +263,17 @@ export class UserWhatsAppSession {
             this.reconnectTimeout = setTimeout(() => {
               this.init().catch(() => {});
             }, backoffMs);
+          } else if (isQrTimeout) {
+            // QR code expired (408) — reset cleanly to NOT_CONNECTED so user can request a new QR
+            console.log(`🔄 [User ${this.userId}] QR code expired (408). Resetting to NOT_CONNECTED.`);
+            this.connectionState = "NOT_CONNECTED";
+            this.errorMessage = null;
+            this.qrCodeString = null;
+            this.qrCodeDataUrl = null;
+            this.qrExpiresAt = null;
+            this.sock = null;
+            this.isConnecting = false;
+            await this.updateDbSession();
           } else {
             this.connectionState = "ERROR";
             this.errorMessage = lastDisconnect?.error?.message || "Connection closed";
