@@ -67,20 +67,36 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
         printQRInTerminal: false,
         auth: state,
         browser: Browsers.windows("Chrome"),
-        connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 60000,
-        keepAliveIntervalMs: 25000,
+        connectTimeoutMs: 180000,
+        defaultQueryTimeoutMs: 180000,
+        keepAliveIntervalMs: 15000,
+        retryRequestDelayMs: 2500,
+        maxMsgRetryCount: 5,
         syncFullHistory: false,
+        markOnlineOnConnect: true,
         generateHighQualityLinkPreview: false,
+        getMessage: async () => undefined,
       });
       this.isConnecting = false;
 
-      this.sock.ev.on("creds.update", saveCreds);
+      this.sock.ev.on("creds.update", async (creds) => {
+        await saveCreds();
+        // If registration was completed, extract phone immediately
+        if (state.creds?.me?.id && !this.connectedPhone) {
+          const rawId = state.creds.me.id;
+          this.connectedPhone = rawId ? rawId.split(":")[0].replace(/[^0-9]/g, "") : null;
+          this.connectedName = state.creds.me.name || "QistFlow WhatsApp";
+          this.connectionState = "CONNECTED";
+          this.qrCodeString = null;
+          this.qrCodeDataUrl = null;
+          await this.updateDbSession();
+        }
+      });
 
       this.sock.ev.on("connection.update", async (update: Partial<ConnectionState>) => {
         const { connection, lastDisconnect, qr } = update;
 
-        if (qr) {
+        if (qr && !state.creds?.registered) {
           console.log("\n📲 [Baileys] WhatsApp Pairing QR Code Generated!");
           this.qrCodeString = qr;
           try {
@@ -99,20 +115,33 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
         if (connection === "close") {
           const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+          const isRegistered = !!(state.creds?.registered || state.creds?.me);
 
-          this.connectionState = statusCode === DisconnectReason.loggedOut ? "DISCONNECTED" : "FAILED";
-          this.errorMessage = lastDisconnect?.error?.message || "Connection closed";
-          this.qrCodeString = null;
-          this.qrCodeDataUrl = null;
-          this.sock = null;
-          this.isConnecting = false;
+          console.log(`⚠️ [Baileys] Connection closed: statusCode=${statusCode}, shouldReconnect=${shouldReconnect}, isRegistered=${isRegistered}`);
 
-          await this.updateDbSession();
-
-          if (shouldReconnect) {
+          if (isRegistered) {
+            // Credentials exist! Reconnect immediately without wiping
+            this.connectionState = "CONNECTING";
+            this.sock = null;
+            this.isConnecting = false;
             setTimeout(() => {
               this.init();
-            }, 5000);
+            }, 2000);
+          } else {
+            this.connectionState = statusCode === DisconnectReason.loggedOut ? "DISCONNECTED" : "FAILED";
+            this.errorMessage = lastDisconnect?.error?.message || "Connection closed";
+            this.qrCodeString = null;
+            this.qrCodeDataUrl = null;
+            this.sock = null;
+            this.isConnecting = false;
+
+            await this.updateDbSession();
+
+            if (shouldReconnect) {
+              setTimeout(() => {
+                this.init();
+              }, 4000);
+            }
           }
         } else if (connection === "open") {
           this.connectionState = "CONNECTED";
