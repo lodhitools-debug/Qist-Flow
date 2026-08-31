@@ -7,28 +7,8 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("🌱 Starting QistFlow Production Database Seed...");
 
-  // 1. Create Initial Admin ONLY if explicit ENV variables are provided
-  if (process.env.INITIAL_ADMIN_EMAIL && process.env.INITIAL_ADMIN_PASSWORD) {
-    const adminEmail = process.env.INITIAL_ADMIN_EMAIL.toLowerCase().trim();
-    const adminPasswordHash = await bcrypt.hash(process.env.INITIAL_ADMIN_PASSWORD, 10);
-
-    await prisma.user.upsert({
-      where: { email: adminEmail },
-      update: {},
-      create: {
-        name: process.env.INITIAL_ADMIN_NAME || "Administrator",
-        email: adminEmail,
-        passwordHash: adminPasswordHash,
-        phone: process.env.INITIAL_ADMIN_PHONE || null,
-        role: "ADMIN",
-        branch: "MAIN",
-        mustChangePassword: false,
-      },
-    });
-    console.log(`✅ Configured Admin user: ${adminEmail}`);
-  } else {
-    console.log("ℹ️ No hardcoded demo users seeded. Admin can sign in with Google or create credentials on initial launch.");
-  }
+  // 1. Templates & Settings Seeding (No hardcoded users - Admin logs in via Google or creates account on initial launch)
+  console.log("ℹ️ No hardcoded demo users. Admin can sign in with Google or create credentials on initial launch.");
 
   // 2. Create Default Templates
   const templateMap: Record<string, string> = {};
