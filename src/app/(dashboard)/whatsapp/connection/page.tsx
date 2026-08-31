@@ -134,7 +134,7 @@ export default function WhatsAppConnectionPage() {
           setNotice("Error: " + (data.message || data.error || "Unknown backend error"));
           setStatus("ERROR");
         } else {
-          setStatus(data.status || "CONNECTING");
+          setStatus(data.status || "INIT_QR");
           setQrCode(data.qrCode || null);
           setNotice(null);
         }
@@ -533,7 +533,7 @@ export default function WhatsAppConnectionPage() {
                   <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
                     <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                     <span>
-                      {status === "CONNECTING"
+                      {(status === "CONNECTING" || status === "INIT_QR")
                         ? "Worker Connecting..."
                         : status === "LOGGED_OUT"
                         ? "Session Logged Out – Fresh QR Required"
@@ -627,7 +627,7 @@ export default function WhatsAppConnectionPage() {
                         Generate New QR
                       </button>
                     </div>
-                  ) : status === "CONNECTING" ? (
+                  ) : (status === "CONNECTING" || status === "INIT_QR") ? (
                     <div className="space-y-4 max-w-xs mx-auto">
                       <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
                       <div>

@@ -31,11 +31,13 @@ export async function POST(req: NextRequest) {
     // 2. Direct fetch removed to rely 100% on DB polling.
     // The background worker on AlwaysData or Local PC will detect CONNECTING status and generate QR.
 
-    // 3. Update DB session status to CONNECTING for worker polling loop
+    // 3. Update DB session status to INIT_QR for worker polling loop
+    // Using INIT_QR instead of CONNECTING prevents the old remote AlwaysData worker from intercepting
+    // and crashing (due to missing crypto fix) while we run the local worker.
     const updatedSession = await prisma.whatsAppSession.upsert({
       where: { userId: user.userId },
       update: {
-        status: "CONNECTING",
+        status: "INIT_QR",
         errorMessage: null,
         pairingCode: null,
         requestedPhone: null,
@@ -45,7 +47,7 @@ export async function POST(req: NextRequest) {
       },
       create: {
         userId: user.userId,
-        status: "CONNECTING",
+        status: "INIT_QR",
         errorMessage: null,
         pairingCode: null,
         requestedPhone: null,

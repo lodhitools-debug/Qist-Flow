@@ -148,9 +148,9 @@ async function startWorker() {
             }
           }
 
-          // 4. Handle CONNECTING request - generate QR code for user
+          // 4. Handle CONNECTING / INIT_QR request - generate QR code for user
           else if (
-            session.status === "CONNECTING" &&
+            (session.status === "CONNECTING" || session.status === "INIT_QR") &&
             !session.qrCode &&
             !userSession.isConnected()
           ) {
