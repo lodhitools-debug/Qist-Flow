@@ -149,6 +149,11 @@ export default function WhatsAppConnectionPage() {
         setConnectedName(data.name || null);
         setConnectedAt(data.connectedAt || null);
         setErrorMsg(data.errorMessage || null);
+        
+        // Notify Header to update immediately
+        if (data.status !== status) {
+          window.dispatchEvent(new Event("wa_status_changed"));
+        }
       }
     } catch {} 
     

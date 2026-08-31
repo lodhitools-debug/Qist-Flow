@@ -66,7 +66,14 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
     fetchWAStatus();
     // Poll every 30s — the connection page handles real-time updates
     const interval = setInterval(fetchWAStatus, 30_000);
-    return () => clearInterval(interval);
+    
+    const onStatusChange = () => fetchWAStatus();
+    window.addEventListener("wa_status_changed", onStatusChange);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("wa_status_changed", onStatusChange);
+    };
   }, []);
 
   const handleLogout = async () => {
