@@ -208,6 +208,37 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
     await this.init();
   }
 
+  async requestPairingCode(phone: string): Promise<string> {
+    let cleanPhone = phone.replace(/[^0-9]/g, "");
+    if (cleanPhone.startsWith("03") && cleanPhone.length === 11) {
+      cleanPhone = "92" + cleanPhone.substring(1);
+    } else if (cleanPhone.startsWith("3") && cleanPhone.length === 10) {
+      cleanPhone = "92" + cleanPhone;
+    }
+
+    if (!cleanPhone || cleanPhone.length < 10) {
+      throw new Error("Please enter a valid WhatsApp phone number (e.g. 03001234567 or 923001234567)");
+    }
+
+    if (!this.sock) {
+      await this.init();
+    }
+
+    if (!this.sock) {
+      throw new Error("WhatsApp socket could not be initialized");
+    }
+
+    // Wait a brief moment if socket is starting up
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    try {
+      const code = await this.sock.requestPairingCode(cleanPhone);
+      return code;
+    } catch (err: any) {
+      throw new Error(err.message || "Failed to request pairing code from WhatsApp");
+    }
+  }
+
   async sendMessage(payload: WhatsAppMessagePayload): Promise<WhatsAppSendResult> {
     if (!this.sock || this.connectionState !== "CONNECTED") {
       return {

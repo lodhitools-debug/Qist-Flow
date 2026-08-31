@@ -146,6 +146,23 @@ async function startWorker() {
         return;
       }
 
+      if (req.method === "POST" && pathname === "/api/wa/pairing-code") {
+        let body = "";
+        req.on("data", (chunk) => (body += chunk));
+        req.on("end", async () => {
+          try {
+            const payload = JSON.parse(body || "{}");
+            const code = await waWebProvider.requestPairingCode(payload.phone || "");
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: true, pairingCode: code }));
+          } catch (err: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
+        return;
+      }
+
       if (req.method === "POST" && pathname === "/api/wa/send") {
         let body = "";
         req.on("data", (chunk) => (body += chunk));
