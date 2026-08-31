@@ -22,10 +22,14 @@ import {
   Edit,
   Save,
   Trash2,
+  UserCheck,
+  Users,
+  ShieldAlert,
+  HelpCircle,
 } from "lucide-react";
 import clsx from "clsx";
 import { getStatusBadgeConfig } from "@/lib/installment-engine";
-import { formatDisplayPhone } from "@/lib/excel/mapper";
+import { formatDisplayPhone, formatPhoneNumber } from "@/lib/excel/mapper";
 
 async function safeJsonParse(res: Response): Promise<any> {
   const text = await res.text();
@@ -55,11 +59,22 @@ export default function CustomerDetailPage() {
   const [comment, setComment] = useState("");
   const [optedOut, setOptedOut] = useState(false);
 
-  // Message modal state
+  // Customer Message modal state
   const [msgOpen, setMsgOpen] = useState(false);
   const [customMsg, setCustomMsg] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
   const [msgNotice, setMsgNotice] = useState<string | null>(null);
+
+  // Guarantor Message modal state
+  const [guarantorModalOpen, setGuarantorModalOpen] = useState(false);
+  const [selectedGuarantor, setSelectedGuarantor] = useState<"GUARANTOR_1" | "GUARANTOR_2">("GUARANTOR_1");
+  const [guarantorMessageType, setGuarantorMessageType] = useState<"GUARANTOR_FIRST_NOTICE" | "GUARANTOR_FOLLOWUP" | "GUARANTOR_FINAL_NOTICE">("GUARANTOR_FIRST_NOTICE");
+  const [guarantorCustomMsg, setGuarantorCustomMsg] = useState("");
+  const [sendingGuarantorMsg, setSendingGuarantorMsg] = useState(false);
+  const [guarantorMsgNotice, setGuarantorMsgNotice] = useState<string | null>(null);
+
+  // History Tab
+  const [historyTab, setHistoryTab] = useState<"CUSTOMER" | "GUARANTOR">("CUSTOMER");
 
   // Payment modal state
   const [payOpen, setPayOpen] = useState(false);
@@ -71,6 +86,30 @@ export default function CustomerDetailPage() {
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [newStatus, setNewStatus] = useState("PAID");
   const [overrideReason, setOverrideReason] = useState("");
+
+  // Staff Assignment State
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [staffUsers, setStaffUsers] = useState<any[]>([]);
+  const [selectedOfficerId, setSelectedOfficerId] = useState("");
+  const [selectedManagerId, setSelectedManagerId] = useState("");
+  const [assignNotes, setAssignNotes] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+
+  const fetchStaffUsers = async () => {
+    try {
+      const [meRes, usersRes] = await Promise.all([
+        fetch("/api/auth/me"),
+        fetch("/api/users"),
+      ]);
+      const meData = await safeJsonParse(meRes);
+      const usersData = await safeJsonParse(usersRes);
+
+      if (meRes.ok && meData.user) setCurrentUser(meData.user);
+      if (usersRes.ok && usersData.users) setStaffUsers(usersData.users);
+    } catch {}
+  };
 
   const fetchCustomer = async () => {
     try {
@@ -84,6 +123,8 @@ export default function CustomerDetailPage() {
         setRecoveryPerson(data.customer.recoveryPerson || "");
         setComment(data.customer.comment || "");
         setOptedOut(data.customer.optedOut || false);
+        setSelectedOfficerId(data.customer.assignedToUserId || "");
+        setSelectedManagerId(data.customer.assignedManagerId || "");
       }
     } catch (err) {
       console.error("Failed to load customer details", err);
@@ -93,8 +134,42 @@ export default function CustomerDetailPage() {
   };
 
   useEffect(() => {
-    if (customerId) fetchCustomer();
+    if (customerId) {
+      fetchCustomer();
+      fetchStaffUsers();
+    }
   }, [customerId]);
+
+  const handleSaveAssignment = async () => {
+    try {
+      setAssigning(true);
+      setAssignError(null);
+
+      const res = await fetch("/api/customers/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId,
+          targetOfficerId: selectedOfficerId || undefined,
+          targetManagerId: selectedManagerId || undefined,
+          notes: assignNotes || undefined,
+        }),
+      });
+
+      const data = await safeJsonParse(res);
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to assign customer");
+      }
+
+      setAssignOpen(false);
+      setAssignNotes("");
+      fetchCustomer();
+    } catch (err: any) {
+      setAssignError(err.message || "Assignment failed");
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   const handleUpdateCustomer = async () => {
     try {
@@ -131,6 +206,8 @@ export default function CustomerDetailPage() {
         body: JSON.stringify({
           customerId,
           recipientPhone: customer.primaryPhone,
+          recipientName: customer.customerName,
+          recipientType: "CUSTOMER",
           messageText: customMsg,
           installmentId: customer.installments?.[0]?.id,
         }),
@@ -150,6 +227,85 @@ export default function CustomerDetailPage() {
       setMsgNotice("Error: " + err.message);
     } finally {
       setSendingMsg(false);
+    }
+  };
+
+  const openGuarantorModal = (type: "GUARANTOR_1" | "GUARANTOR_2") => {
+    setSelectedGuarantor(type);
+    setGuarantorMessageType("GUARANTOR_FIRST_NOTICE");
+    const gName = type === "GUARANTOR_1" ? customer.guarantor1Name || "Guarantor Sahab" : customer.guarantor2Name || "Guarantor Sahab";
+    const inst = customer.installments?.[0];
+    const dueStr = inst?.dueDate ? new Date(inst.dueDate).toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" }) : "N/A";
+
+    const defaultFirstNotice = `Assalam-o-Alaikum ${gName},\n\nYeh paigham aap ko bataur Zamanat-daar (Guarantor) bhaija ja raha hai.\n\nCustomer: ${customer.customerName}\nAccount: ${customer.account}\nPending Amount: Rs. ${inst?.balance || 0}\nDue Date: ${dueStr}\n\nBarah-e-karam customer se rabta kar ke unhein un ki pending qist ada karne ki yad-dihani karwayein.\n\nShukriya,\n${customer.recoveryPerson || "QistFlow Recovery Team"}`;
+    setGuarantorCustomMsg(defaultFirstNotice);
+    setGuarantorMsgNotice(null);
+    setGuarantorModalOpen(true);
+  };
+
+  const handleGuarantorTypeChange = (type: "GUARANTOR_FIRST_NOTICE" | "GUARANTOR_FOLLOWUP" | "GUARANTOR_FINAL_NOTICE") => {
+    setGuarantorMessageType(type);
+    const gName = selectedGuarantor === "GUARANTOR_1" ? customer.guarantor1Name || "Guarantor Sahab" : customer.guarantor2Name || "Guarantor Sahab";
+    const inst = customer.installments?.[0];
+    const dueStr = inst?.dueDate ? new Date(inst.dueDate).toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" }) : "N/A";
+
+    let text = "";
+    if (type === "GUARANTOR_FIRST_NOTICE") {
+      text = `Assalam-o-Alaikum ${gName},\n\nYeh paigham aap ko bataur Zamanat-daar (Guarantor) bhaija ja raha hai.\n\nCustomer: ${customer.customerName}\nAccount: ${customer.account}\nPending Amount: Rs. ${inst?.balance || 0}\nDue Date: ${dueStr}\n\nBarah-e-karam customer se rabta kar ke unhein un ki pending qist ada karne ki yad-dihani karwayein.\n\nShukriya,\n${customer.recoveryPerson || "QistFlow Recovery Team"}`;
+    } else if (type === "GUARANTOR_FOLLOWUP") {
+      text = `Yad-dihani Paigham - Zamanat\n\nAssalam-o-Alaikum ${gName},\n\n${customer.customerName} ke account (${customer.account}) ki installment unpaid hai.\n\nAap is account ke guarantor hain. Barah-e-karam fori tor par customer se baat kar ke payment schedule confirm karwayein.\n\nPending Balance: Rs. ${inst?.balance || 0}\nRecovery Officer: ${customer.recoveryPerson || "QistFlow Team"}`;
+    } else {
+      text = `IMPORTANT NOTICE - GUARANTOR OBLIGATION\n\nMuazzaz ${gName},\n\n${customer.customerName} (Account: ${customer.account}) ka account overdue chal raha hai aur mutaddad koshishon ke bawajood payment masool nahi hui.\n\nBataur Guarantor aap ki zimadari hai ke customer se rabta kar ke mamla fori hal karwayein.\n\nTotal Balance: Rs. ${inst?.balance || 0}\nRecovery Contact: ${customer.recoveryPerson || "Recovery Department"}`;
+    }
+    setGuarantorCustomMsg(text);
+  };
+
+  const handleSendGuarantorWhatsApp = async () => {
+    if (!guarantorCustomMsg) return;
+    const phone = selectedGuarantor === "GUARANTOR_1" ? customer.guarantor1Phone : customer.guarantor2Phone;
+    const name = selectedGuarantor === "GUARANTOR_1" ? customer.guarantor1Name : customer.guarantor2Name;
+
+    if (!phone) {
+      setGuarantorMsgNotice("Error: Guarantor phone number is missing");
+      return;
+    }
+
+    try {
+      setSendingGuarantorMsg(true);
+      setGuarantorMsgNotice(null);
+
+      const level = guarantorMessageType === "GUARANTOR_FINAL_NOTICE" ? 3 : guarantorMessageType === "GUARANTOR_FOLLOWUP" ? 2 : 1;
+
+      const res = await fetch("/api/whatsapp/send-manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId,
+          recipientPhone: phone,
+          recipientName: name,
+          recipientType: selectedGuarantor,
+          guarantorId: selectedGuarantor,
+          messageType: guarantorMessageType,
+          escalationLevel: level,
+          messageText: guarantorCustomMsg,
+          installmentId: customer.installments?.[0]?.id,
+        }),
+      });
+
+      const data = await safeJsonParse(res);
+      if (res.ok && data.success) {
+        setGuarantorMsgNotice(data.message || "Guarantor notice dispatched successfully!");
+        setTimeout(() => {
+          setGuarantorModalOpen(false);
+          fetchCustomer();
+        }, 1500);
+      } else {
+        setGuarantorMsgNotice("Error: " + (data.error || "Failed to send guarantor notice"));
+      }
+    } catch (err: any) {
+      setGuarantorMsgNotice("Error: " + err.message);
+    } finally {
+      setSendingGuarantorMsg(false);
     }
   };
 
@@ -231,8 +387,19 @@ export default function CustomerDetailPage() {
   const dueStr = inst?.dueDate ? new Date(inst.dueDate).toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" }) : "N/A";
   const lastPaidDateStr = inst?.lastPaymentDate ? new Date(inst.lastPaymentDate).toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
+  // Filter messages
+  const customerLogs = (customer.messageLogs || []).filter((l: any) => !l.recipientType || l.recipientType === "CUSTOMER");
+  const guarantorLogs = (customer.messageLogs || []).filter((l: any) => ["GUARANTOR_1", "GUARANTOR_2"].includes(l.recipientType));
+  const pendingGuarantorQueues = (customer.messageQueues || []).filter((q: any) => ["GUARANTOR_1", "GUARANTOR_2"].includes(q.recipientType) && q.status === "QUEUED");
+
+  const g1PhoneValid = customer.guarantor1Phone ? formatPhoneNumber(customer.guarantor1Phone).isValid : false;
+  const g2PhoneValid = customer.guarantor2Phone ? formatPhoneNumber(customer.guarantor2Phone).isValid : false;
+
+  const g1MessageCount = (customer.messageLogs || []).filter((l: any) => l.recipientType === "GUARANTOR_1").length;
+  const g2MessageCount = (customer.messageLogs || []).filter((l: any) => l.recipientType === "GUARANTOR_2").length;
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Top Breadcrumb & Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -263,7 +430,7 @@ export default function CustomerDetailPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
           <button
             onClick={() => {
               setCustomMsg(
@@ -271,25 +438,25 @@ export default function CustomerDetailPage() {
               );
               setMsgOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-md shadow-emerald-500/20"
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-md shadow-emerald-500/20 min-h-[44px]"
           >
-            <Send className="w-3.5 h-3.5" />
+            <Send className="w-4 h-4" />
             <span>Send WhatsApp</span>
           </button>
 
           <button
             onClick={() => setPayOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 text-white text-xs font-bold border border-slate-700 transition-colors"
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 text-white text-xs font-bold border border-slate-700 transition-colors min-h-[44px]"
           >
-            <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+            <DollarSign className="w-4 h-4 text-emerald-400" />
             <span>Record Payment</span>
           </button>
 
           <button
             onClick={() => setOverrideOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50"
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 min-h-[44px]"
           >
-            <ShieldCheck className="w-3.5 h-3.5" />
+            <ShieldCheck className="w-4 h-4" />
             <span>Override Status</span>
           </button>
         </div>
@@ -365,20 +532,40 @@ export default function CustomerDetailPage() {
               )}
             </div>
 
-            <div>
-              <span className="text-slate-400 block text-[11px]">Assigned Recovery Officer:</span>
-              {editMode ? (
-                <input
-                  type="text"
-                  value={recoveryPerson}
-                  onChange={(e) => setRecoveryPerson(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs mt-1"
-                />
-              ) : (
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  {customer.recoveryPerson || "Unassigned"}
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Staff Assignment
                 </span>
-              )}
+                {(currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedOfficerId(customer.assignedToUserId || "");
+                      setSelectedManagerId(customer.assignedManagerId || "");
+                      setAssignError(null);
+                      setAssignOpen(true);
+                    }}
+                    className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    Assign / Reassign
+                  </button>
+                )}
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[11px]">Assigned Manager:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {customer.assignedManager?.name || "Unassigned"}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 text-[11px]">Recovery Officer:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {customer.assignedTo?.name || customer.recoveryPerson || "Unassigned"}
+                </span>
+              </div>
             </div>
 
             <div>
@@ -475,19 +662,18 @@ export default function CustomerDetailPage() {
           </div>
         </div>
 
-        {/* Card 3: Financed Product & Guarantors */}
+        {/* Card 3: Financed Product */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
               <Smartphone className="w-4 h-4 text-emerald-500" />
-              <span>Financed Item & Guarantors</span>
+              <span>Financed Product Details</span>
             </h2>
           </div>
 
-          {/* Product & IMEIs */}
-          <div className="space-y-2 text-xs">
+          <div className="space-y-2.5 text-xs">
             <div>
-              <span className="text-slate-400 block text-[11px]">Product:</span>
+              <span className="text-slate-400 block text-[11px]">Product Name:</span>
               <span className="font-bold text-slate-900 dark:text-white">
                 {customer.productName || "General Installment Loan"}
               </span>
@@ -515,36 +701,129 @@ export default function CustomerDetailPage() {
                 </span>
               </div>
             )}
-          </div>
-
-          {/* Guarantors */}
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5 text-xs">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-              Guarantor References
-            </span>
 
             <div>
-              <span className="text-slate-400 block text-[11px]">Guarantor 1:</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {customer.guarantor1Name || "—"}
+              <span className="text-slate-400 block text-[11px]">Sales Person:</span>
+              <span className="text-slate-800 dark:text-slate-200 font-semibold">
+                {customer.salesPerson || "—"}
               </span>
-              {customer.guarantor1Phone && (
-                <span className="font-mono text-slate-500 ml-2">
-                  ({formatDisplayPhone(customer.guarantor1Phone)})
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Guarantor Contact Cards (2 Columns) */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Users className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            <span>Guarantor Recovery References</span>
+          </h2>
+          <span className="text-xs text-slate-400">
+            Escalation contacts for overdue recovery
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Guarantor 1 Card */}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200">
+                  GUARANTOR 1
                 </span>
-              )}
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                  {customer.guarantor1Name || "Not Provided"}
+                </h3>
+              </div>
+              <span
+                className={clsx(
+                  "text-[10px] font-bold px-2 py-0.5 rounded-full",
+                  g1PhoneValid
+                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                )}
+              >
+                {g1PhoneValid ? "Valid Phone" : "Missing / Invalid"}
+              </span>
             </div>
 
-            <div>
-              <span className="text-slate-400 block text-[11px]">Guarantor 2:</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {customer.guarantor2Name || "—"}
-              </span>
-              {customer.guarantor2Phone && (
-                <span className="font-mono text-slate-500 ml-2">
-                  ({formatDisplayPhone(customer.guarantor2Phone)})
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400 text-[11px]">Phone Number:</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                  {customer.guarantor1Phone ? formatDisplayPhone(customer.guarantor1Phone) : "—"}
                 </span>
-              )}
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-slate-400 text-[11px]">Messages Sent:</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  {g1MessageCount} notice(s)
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              <button
+                disabled={!g1PhoneValid}
+                onClick={() => openGuarantorModal("GUARANTOR_1")}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-sm shadow-purple-500/20 disabled:opacity-50 min-h-[38px]"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Send Notice to Guarantor 1</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Guarantor 2 Card */}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200">
+                  GUARANTOR 2
+                </span>
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                  {customer.guarantor2Name || "Not Provided"}
+                </h3>
+              </div>
+              <span
+                className={clsx(
+                  "text-[10px] font-bold px-2 py-0.5 rounded-full",
+                  g2PhoneValid
+                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    : "bg-slate-100 text-slate-500 border border-slate-200"
+                )}
+              >
+                {g2PhoneValid ? "Valid Phone" : "Missing / Optional"}
+              </span>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400 text-[11px]">Phone Number:</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                  {customer.guarantor2Phone ? formatDisplayPhone(customer.guarantor2Phone) : "—"}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-slate-400 text-[11px]">Messages Sent:</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  {g2MessageCount} notice(s)
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              <button
+                disabled={!g2PhoneValid}
+                onClick={() => openGuarantorModal("GUARANTOR_2")}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold shadow-sm disabled:opacity-50 min-h-[38px]"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Send Notice to Guarantor 2</span>
+              </button>
             </div>
           </div>
         </div>
@@ -596,45 +875,276 @@ export default function CustomerDetailPage() {
           )}
         </div>
 
-        {/* WhatsApp Message Log */}
+        {/* WhatsApp Message Delivery & Escalation History */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-emerald-500" />
-              <span>WhatsApp Reminder History</span>
-            </h3>
-            <span className="text-xs text-slate-400">
-              {customer.messageLogs?.length || 0} messages sent
-            </span>
+          {/* Sub-tabs: Customer vs Guarantor */}
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setHistoryTab("CUSTOMER")}
+                className={clsx(
+                  "px-3 py-1.5 rounded-xl text-xs font-bold transition-colors",
+                  historyTab === "CUSTOMER"
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                    : "text-slate-500 hover:text-slate-800"
+                )}
+              >
+                Customer Reminders ({customerLogs.length})
+              </button>
+
+              <button
+                onClick={() => setHistoryTab("GUARANTOR")}
+                className={clsx(
+                  "px-3 py-1.5 rounded-xl text-xs font-bold transition-colors",
+                  historyTab === "GUARANTOR"
+                    ? "bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
+                    : "text-slate-500 hover:text-slate-800"
+                )}
+              >
+                Guarantor Escalations ({guarantorLogs.length + pendingGuarantorQueues.length})
+              </button>
+            </div>
           </div>
 
-          {customer.messageLogs && customer.messageLogs.length > 0 ? (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs max-h-80 overflow-y-auto">
-              {customer.messageLogs.map((log: any) => (
-                <div key={log.id} className="py-3 space-y-1">
+          {/* Customer Log Tab */}
+          {historyTab === "CUSTOMER" && (
+            <div>
+              {customerLogs.length > 0 ? (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs max-h-80 overflow-y-auto">
+                  {customerLogs.map((log: any) => (
+                    <div key={log.id} className="py-3 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={clsx(
+                            "px-2 py-0.5 rounded text-[10px] font-bold",
+                            log.status === "SENT"
+                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                              : log.status === "FAILED"
+                              ? "bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                              : "bg-slate-100 text-slate-600"
+                          )}
+                        >
+                          {log.status} ({log.messageType})
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(log.sentAt).toLocaleString("en-PK")}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl whitespace-pre-line font-mono">
+                        {log.messageText}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center text-xs text-slate-400">
+                  No WhatsApp reminders sent to this customer yet.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Guarantor Log Tab */}
+          {historyTab === "GUARANTOR" && (
+            <div className="space-y-3">
+              {/* Pending Queue notices */}
+              {pendingGuarantorQueues.map((q: any) => (
+                <div key={q.id} className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                      {log.status} ({log.messageType})
+                    <span className="font-bold text-amber-700 dark:text-amber-300">
+                      ⏳ {q.approvalStatus === "PENDING_APPROVAL" ? "PENDING MANAGER APPROVAL" : "QUEUED FOR WORKER"}
                     </span>
                     <span className="text-[10px] text-slate-400">
-                      {new Date(log.sentAt).toLocaleString("en-PK")}
+                      Target: {q.recipientName} ({q.recipientType})
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg whitespace-pre-line">
-                    {log.messageText}
+                  <p className="text-[11px] text-slate-700 dark:text-slate-300 whitespace-pre-line font-mono bg-white dark:bg-slate-900 p-2 rounded-lg border border-amber-100">
+                    {q.messageText}
                   </p>
                 </div>
               ))}
-            </div>
-          ) : (
-            <div className="py-8 text-center text-xs text-slate-400">
-              No WhatsApp reminders sent to this customer yet.
+
+              {/* Sent / Logged notices */}
+              {guarantorLogs.length > 0 ? (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs max-h-80 overflow-y-auto">
+                  {guarantorLogs.map((log: any) => (
+                    <div key={log.id} className="py-3 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200">
+                            {log.recipientType} • Level {log.escalationLevel || 1}
+                          </span>
+                          <span
+                            className={clsx(
+                              "px-1.5 py-0.5 rounded text-[10px] font-bold",
+                              log.status === "SENT"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : log.status === "FAILED"
+                                ? "bg-rose-50 text-rose-700"
+                                : "bg-slate-100 text-slate-600"
+                            )}
+                          >
+                            {log.status}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(log.sentAt).toLocaleString("en-PK")}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl whitespace-pre-line font-mono">
+                        {log.messageText}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : pendingGuarantorQueues.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-400">
+                  No guarantor escalation notices sent for this account yet.
+                </div>
+              ) : null}
             </div>
           )}
         </div>
       </div>
 
-      {/* Modal: Send WhatsApp Message */}
+      {/* Assignment History Log */}
+      {customer.assignments && customer.assignments.length > 0 && (
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <UserCheck className="w-4 h-4 text-indigo-500" />
+            <span>Staff Assignment History & Audit Trail</span>
+          </h3>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+            {customer.assignments.map((asg: any) => (
+              <div key={asg.id} className="py-2.5 flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    Assigned to {asg.user?.name} ({asg.role})
+                  </span>
+                  <div className="text-[11px] text-slate-400">
+                    By: {asg.assignedBy?.name || "System"} • Status: {asg.isActive ? "Active Assignment" : "Reassigned / Inactive"}
+                    {asg.notes && ` • Notes: ${asg.notes}`}
+                  </div>
+                </div>
+                <div className="text-right text-[11px] text-slate-500">
+                  {new Date(asg.assignedAt).toLocaleString("en-PK")}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Assign Staff */}
+      {assignOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-indigo-500" />
+                <span>Assign Customer to Staff</span>
+              </h3>
+              <button onClick={() => setAssignOpen(false)} className="text-slate-400 text-lg font-bold">
+                ✕
+              </button>
+            </div>
+
+            {assignError && (
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{assignError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              {currentUser?.role === "ADMIN" && (
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Assign Manager / Team
+                  </label>
+                  <select
+                    value={selectedManagerId}
+                    onChange={(e) => setSelectedManagerId(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none"
+                  >
+                    <option value="">-- No Manager (Direct / Global) --</option>
+                    {staffUsers
+                      .filter((u) => u.role === "MANAGER")
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({m.branch || "MAIN"})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Assign Recovery Officer
+                </label>
+                <select
+                  value={selectedOfficerId}
+                  onChange={(e) => setSelectedOfficerId(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none"
+                >
+                  <option value="">-- Unassigned Officer --</option>
+                  {staffUsers
+                    .filter((u) => {
+                      if (currentUser?.role === "MANAGER") {
+                        return u.role === "RECOVERY_OFFICER" && u.managerId === currentUser.id;
+                      }
+                      return u.role === "RECOVERY_OFFICER";
+                    })
+                    .map((off) => (
+                      <option key={off.id} value={off.id}>
+                        {off.name} ({off.employeeCode || off.branch || "Officer"})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Assignment Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Assigned for special follow-up"
+                  value={assignNotes}
+                  onChange={(e) => setAssignNotes(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setAssignOpen(false)}
+                className="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold min-h-[38px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={assigning}
+                onClick={handleSaveAssignment}
+                className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 min-h-[38px]"
+              >
+                {assigning ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <UserCheck className="w-3.5 h-3.5" />
+                )}
+                <span>Save Assignment</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Send WhatsApp Message (Customer) */}
       {msgOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
@@ -677,7 +1187,7 @@ export default function CustomerDetailPage() {
               <button
                 type="button"
                 onClick={() => setMsgOpen(false)}
-                className="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold"
+                className="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold min-h-[38px]"
               >
                 Cancel
               </button>
@@ -685,7 +1195,7 @@ export default function CustomerDetailPage() {
                 type="button"
                 disabled={sendingMsg}
                 onClick={handleSendWhatsApp}
-                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 min-h-[38px]"
               >
                 {sendingMsg ? (
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -693,6 +1203,100 @@ export default function CustomerDetailPage() {
                   <Send className="w-3.5 h-3.5" />
                 )}
                 <span>Dispatch to WhatsApp</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Send Guarantor Notice */}
+      {guarantorModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Users className="w-4 h-4 text-purple-600" />
+                <span>Send Guarantor Recovery Notice</span>
+              </h3>
+              <button onClick={() => setGuarantorModalOpen(false)} className="text-slate-400 text-lg font-bold">
+                ✕
+              </button>
+            </div>
+
+            {guarantorMsgNotice && (
+              <div
+                className={clsx(
+                  "p-3 rounded-xl text-xs font-semibold",
+                  guarantorMsgNotice.startsWith("Error")
+                    ? "bg-rose-50 text-rose-700 border border-rose-200"
+                    : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                )}
+              >
+                {guarantorMsgNotice}
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Target Guarantor</label>
+                  <select
+                    value={selectedGuarantor}
+                    onChange={(e) => setSelectedGuarantor(e.target.value as any)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-white"
+                  >
+                    <option value="GUARANTOR_1">Guarantor 1: {customer.guarantor1Name || "G1"}</option>
+                    <option value="GUARANTOR_2">Guarantor 2: {customer.guarantor2Name || "G2"}</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-500 font-semibold mb-1">Notice Template</label>
+                  <select
+                    value={guarantorMessageType}
+                    onChange={(e) => handleGuarantorTypeChange(e.target.value as any)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 dark:text-white"
+                  >
+                    <option value="GUARANTOR_FIRST_NOTICE">Level 1: First Notice</option>
+                    <option value="GUARANTOR_FOLLOWUP">Level 2: Follow-up</option>
+                    <option value="GUARANTOR_FINAL_NOTICE">Level 3: Final Notice</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
+                  Message Text (Privacy Safe: No CNIC / Full Address)
+                </label>
+                <textarea
+                  rows={6}
+                  value={guarantorCustomMsg}
+                  onChange={(e) => setGuarantorCustomMsg(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setGuarantorModalOpen(false)}
+                className="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold min-h-[38px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={sendingGuarantorMsg}
+                onClick={handleSendGuarantorWhatsApp}
+                className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 min-h-[38px]"
+              >
+                {sendingGuarantorMsg ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span>Dispatch Notice</span>
               </button>
             </div>
           </div>
@@ -748,7 +1352,7 @@ export default function CustomerDetailPage() {
               <button
                 type="button"
                 onClick={() => setPayOpen(false)}
-                className="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold"
+                className="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold min-h-[38px]"
               >
                 Cancel
               </button>
@@ -756,7 +1360,7 @@ export default function CustomerDetailPage() {
                 type="button"
                 disabled={recordingPay}
                 onClick={handleRecordPayment}
-                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 min-h-[38px]"
               >
                 {recordingPay ? (
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -820,14 +1424,14 @@ export default function CustomerDetailPage() {
               <button
                 type="button"
                 onClick={() => setOverrideOpen(false)}
-                className="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold"
+                className="px-3.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold min-h-[38px]"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleOverrideStatus}
-                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5"
+                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 min-h-[38px]"
               >
                 <span>Save Override</span>
               </button>

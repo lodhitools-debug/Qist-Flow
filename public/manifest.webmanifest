@@ -1,0 +1,43 @@
+{
+  "name": "QistFlow",
+  "short_name": "QistFlow",
+  "description": "Automated installment recovery, customer ledger, and WhatsApp reminder system for QistBazar.",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "business", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Customers",
+      "url": "/customers",
+      "description": "View Customer Portfolio"
+    },
+    {
+      "name": "Recovery Workspace",
+      "url": "/recovery",
+      "description": "Recovery and Reminders"
+    },
+    {
+      "name": "WhatsApp Connection",
+      "url": "/whatsapp/connection",
+      "description": "Inspect WhatsApp Connection"
+    }
+  ]
+}

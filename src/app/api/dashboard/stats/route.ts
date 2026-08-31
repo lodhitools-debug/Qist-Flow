@@ -1,16 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { startOfDay, endOfDay, subDays, format } from "date-fns";
+import { getSessionUser } from "@/lib/auth";
+import { getUserCustomerScope } from "@/lib/rbac";
+import { startOfDay, endOfDay } from "date-fns";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    const session = await getSessionUser(req);
     const todayStart = startOfDay(new Date());
     const todayEnd = endOfDay(new Date());
 
-    // 1. Customer Counts
-    const totalCustomers = await prisma.customer.count();
+    const customerScope = session ? getUserCustomerScope(session) : {};
 
-    // 2. Installment Status Counts
+    // 1. Customer Counts & Assignments
+    const [totalCustomers, assignedCustomers] = await Promise.all([
+      prisma.customer.count({ where: customerScope }),
+      prisma.customer.count({
+        where: {
+          ...customerScope,
+          assignedToUserId: { not: null },
+        },
+      }),
+    ]);
+
+    // 2. Installment Status Counts within scope
     const [
       dueTodayCount,
       overdueCount,
@@ -19,54 +34,62 @@ export async function GET(req: NextRequest) {
       partialCount,
       unknownCount,
     ] = await Promise.all([
-      prisma.installment.count({ where: { status: "DUE_TODAY" } }),
-      prisma.installment.count({ where: { status: "OVERDUE" } }),
-      prisma.installment.count({ where: { status: "PAID" } }),
-      prisma.installment.count({ where: { status: "UPCOMING" } }),
-      prisma.installment.count({ where: { status: "PARTIAL" } }),
-      prisma.installment.count({ where: { status: "UNKNOWN" } }),
+      prisma.installment.count({ where: { status: "DUE_TODAY", customer: customerScope } }),
+      prisma.installment.count({ where: { status: "OVERDUE", customer: customerScope } }),
+      prisma.installment.count({ where: { status: "PAID", customer: customerScope } }),
+      prisma.installment.count({ where: { status: "UPCOMING", customer: customerScope } }),
+      prisma.installment.count({ where: { status: "PARTIAL", customer: customerScope } }),
+      prisma.installment.count({ where: { status: "UNKNOWN", customer: customerScope } }),
     ]);
 
     const pendingCount = dueTodayCount + overdueCount + upcomingCount + partialCount;
 
-    // 3. Financial Totals
+    // 3. Financial Totals within scope
     const [totalOutstandingAgg, todayRecoveryAgg, totalRecoveryAgg] = await Promise.all([
       prisma.installment.aggregate({
+        where: { customer: customerScope },
         _sum: { balance: true },
       }),
       prisma.payment.aggregate({
         where: {
+          customer: customerScope,
           paymentDate: { gte: todayStart, lte: todayEnd },
         },
         _sum: { amount: true },
       }),
       prisma.payment.aggregate({
+        where: { customer: customerScope },
         _sum: { amount: true },
       }),
     ]);
 
-    // 4. WhatsApp Stats Today
+    // 4. WhatsApp Stats Today within scope
     const [waSentToday, waFailedToday, waQueued] = await Promise.all([
       prisma.messageLog.count({
         where: {
+          customer: customerScope,
           status: "SENT",
           sentAt: { gte: todayStart, lte: todayEnd },
         },
       }),
       prisma.messageLog.count({
         where: {
+          customer: customerScope,
           status: "FAILED",
           sentAt: { gte: todayStart, lte: todayEnd },
         },
       }),
       prisma.messageQueue.count({
-        where: { status: "QUEUED" },
+        where: {
+          customer: customerScope,
+          status: "QUEUED",
+        },
       }),
     ]);
 
     // 5. Due Today Priority Customers
     const dueTodayCustomers = await prisma.installment.findMany({
-      where: { status: "DUE_TODAY" },
+      where: { status: "DUE_TODAY", customer: customerScope },
       include: { customer: true },
       take: 8,
       orderBy: { emi: "desc" },
@@ -74,7 +97,7 @@ export async function GET(req: NextRequest) {
 
     // 6. Overdue High-Priority Customers
     const overdueCustomers = await prisma.installment.findMany({
-      where: { status: "OVERDUE" },
+      where: { status: "OVERDUE", customer: customerScope },
       include: { customer: true },
       take: 8,
       orderBy: { balance: "desc" },
@@ -83,7 +106,10 @@ export async function GET(req: NextRequest) {
     // 7. Recovery Officer Performance
     const recoveryOfficers = await prisma.customer.groupBy({
       by: ["recoveryPerson"],
-      where: { recoveryPerson: { not: null } },
+      where: {
+        ...customerScope,
+        recoveryPerson: { not: null },
+      },
       _count: { _all: true },
     });
 
@@ -92,15 +118,17 @@ export async function GET(req: NextRequest) {
         const officerName = ro.recoveryPerson || "Unassigned";
         const customerIds = (
           await prisma.customer.findMany({
-            where: { recoveryPerson: officerName },
+            where: {
+              ...customerScope,
+              recoveryPerson: officerName,
+            },
             select: { id: true },
           })
         ).map((c) => c.id);
 
         const [officerDue, officerOverdue] = await Promise.all([
-          prisma.installment.aggregate({
-            where: { customerId: { in: customerIds } },
-            _sum: { emi: true, balance: true },
+          prisma.installment.count({
+            where: { customerId: { in: customerIds }, status: "DUE_TODAY" },
           }),
           prisma.installment.count({
             where: { customerId: { in: customerIds }, status: "OVERDUE" },
@@ -109,40 +137,28 @@ export async function GET(req: NextRequest) {
 
         return {
           name: officerName,
-          totalAssigned: ro._count._all,
-          totalOutstanding: officerDue._sum.balance || 0,
-          overdueCount: officerOverdue,
+          totalAccounts: ro._count._all,
+          dueToday: officerDue,
+          overdue: officerOverdue,
         };
       })
     );
 
-    // 8. 7-Day Recovery Trend Chart Data
-    const trendLabels: string[] = [];
-    const trendData: number[] = [];
-
-    for (let i = 6; i >= 0; i--) {
-      const d = subDays(new Date(), i);
-      trendLabels.push(format(d, "EEE (dd MMM)"));
-      const dayStart = startOfDay(d);
-      const dayEnd = endOfDay(d);
-
-      const dayPayment = await prisma.payment.aggregate({
-        where: { paymentDate: { gte: dayStart, lte: dayEnd } },
-        _sum: { amount: true },
-      });
-      trendData.push(dayPayment._sum.amount || 0);
-    }
-
     return NextResponse.json({
+      success: true,
+      role: session?.role || "ADMIN",
       summary: {
         totalCustomers,
+        assignedCustomers,
         dueToday: dueTodayCount,
+        dueTodayCount,
         overdue: overdueCount,
-        paid: paidCount,
-        upcoming: upcomingCount,
-        partial: partialCount,
-        unknown: unknownCount,
-        pending: pendingCount,
+        overdueCount,
+        paidCount,
+        upcomingCount,
+        partialCount,
+        unknownCount,
+        pendingCount,
         totalOutstanding: totalOutstandingAgg._sum.balance || 0,
         todayRecovery: todayRecoveryAgg._sum.amount || 0,
         totalRecovery: totalRecoveryAgg._sum.amount || 0,
@@ -155,12 +171,11 @@ export async function GET(req: NextRequest) {
         overdue: overdueCustomers,
       },
       officerPerformance: officerStats,
-      recoveryTrend: {
-        labels: trendLabels,
-        data: trendData,
-      },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to load dashboard statistics" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to load dashboard metrics" },
+      { status: 500 }
+    );
   }
 }

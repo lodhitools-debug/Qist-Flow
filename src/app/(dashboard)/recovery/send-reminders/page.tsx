@@ -129,7 +129,7 @@ function BulkReminderWizardContent() {
         customerId: t.customerId,
         installmentId: t.installmentId,
         primaryPhone: t.primaryPhone,
-        messageText: t.previewMessage,
+        messageText: t.messageText || t.previewMessage,
         dueDate: t.dueDate,
         daysOverdue: t.daysOverdue,
         templateId: selectedTemplateId,

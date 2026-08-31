@@ -2,6 +2,7 @@ import { prisma } from "../prisma";
 import { renderTemplate } from "../template-renderer";
 import { enqueueMessage } from "../whatsapp/message-queue";
 import { calculateInstallmentStatus } from "../installment-engine";
+import { runGuarantorEscalationScheduler } from "../escalation/escalation-engine";
 import { addDays, subDays, startOfDay, endOfDay, format } from "date-fns";
 
 export interface SchedulerRunResult {
@@ -9,12 +10,14 @@ export interface SchedulerRunResult {
   totalEligible: number;
   enqueued: number;
   duplicatesSkipped: number;
+  guarantorEnqueued: number;
+  guarantorPendingApproval: number;
   errors: number;
   details: string[];
 }
 
 /**
- * Executes automatic reminder evaluation across all active reminder rules
+ * Executes automatic reminder evaluation across customer reminder rules and guarantor escalation policy
  */
 export async function runReminderScheduler(forceTimeWindowCheck = true): Promise<SchedulerRunResult> {
   const result: SchedulerRunResult = {
@@ -22,6 +25,8 @@ export async function runReminderScheduler(forceTimeWindowCheck = true): Promise
     totalEligible: 0,
     enqueued: 0,
     duplicatesSkipped: 0,
+    guarantorEnqueued: 0,
+    guarantorPendingApproval: 0,
     errors: 0,
     details: [],
   };
@@ -29,7 +34,7 @@ export async function runReminderScheduler(forceTimeWindowCheck = true): Promise
   const now = new Date();
   const currentHourMinute = format(now, "HH:mm");
 
-  // Fetch active rules with template
+  // 1. Evaluate Customer Reminder Rules
   const activeRules = await prisma.reminderRule.findMany({
     where: { isActive: true },
     include: { template: true },
@@ -52,9 +57,6 @@ export async function runReminderScheduler(forceTimeWindowCheck = true): Promise
     }
 
     // Determine target due date based on daysOffset
-    // daysOffset = -1 => due date is tomorrow (now + 1)
-    // daysOffset = 0  => due date is today
-    // daysOffset = 1  => due date was 1 day ago (now - 1)
     let targetDate = new Date();
     if (rule.daysOffset < 0) {
       targetDate = addDays(now, Math.abs(rule.daysOffset));
@@ -119,9 +121,11 @@ export async function runReminderScheduler(forceTimeWindowCheck = true): Promise
         productName: cust.productName || undefined,
       });
 
-      // Enqueue
+      // Enqueue customer message
       const enqueueRes = await enqueueMessage({
         recipientPhone: cust.primaryPhone,
+        recipientName: cust.customerName,
+        recipientType: "CUSTOMER",
         messageText: renderedText,
         customerId: cust.id,
         installmentId: inst.id,
@@ -143,6 +147,19 @@ export async function runReminderScheduler(forceTimeWindowCheck = true): Promise
     result.details.push(
       `Rule "${rule.name}" processed: ${installments.length} matching installments found.`
     );
+  }
+
+  // 2. Evaluate Guarantor Recovery Escalations
+  try {
+    const guarantorRes = await runGuarantorEscalationScheduler();
+    result.guarantorEnqueued = guarantorRes.enqueued;
+    result.guarantorPendingApproval = guarantorRes.pendingApproval;
+    result.details.push(
+      `Guarantor Escalation: ${guarantorRes.evaluated} accounts evaluated, ${guarantorRes.enqueued} enqueued, ${guarantorRes.pendingApproval} pending approval, ${guarantorRes.skipped} skipped.`
+    );
+  } catch (err: any) {
+    console.error("Guarantor scheduler error:", err);
+    result.errors++;
   }
 
   return result;

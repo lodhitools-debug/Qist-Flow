@@ -1,14 +1,72 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { startOfDay, endOfDay, startOfMonth, endOfMonth, parseISO } from "date-fns";
+import { getSessionUser } from "@/lib/auth";
+import { getUserCustomerScope } from "@/lib/rbac";
+import { startOfDay, endOfDay, startOfMonth, endOfMonth, parseISO, subDays } from "date-fns";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    const session = await getSessionUser(req);
     const { searchParams } = new URL(req.url);
-    const reportType = searchParams.get("type") || "DAILY"; // DAILY, MONTHLY, OFFICERS, WHATSAPP
+    const reportType = searchParams.get("type") || "DAILY"; // DAILY, MONTHLY, OFFICERS, WHATSAPP, GUARANTOR_ESCALATION
     const dateStr = searchParams.get("date"); // e.g. "2026-08-31"
 
     const baseDate = dateStr ? parseISO(dateStr) : new Date();
+    const customerScope = session ? getUserCustomerScope(session) : {};
+
+    if (reportType === "GUARANTOR_ESCALATION") {
+      const logs = await prisma.messageLog.findMany({
+        where: {
+          recipientType: { in: ["GUARANTOR_1", "GUARANTOR_2"] },
+          customer: customerScope,
+        },
+        include: {
+          customer: {
+            include: {
+              installments: {
+                where: { balance: { gt: 0 } },
+                orderBy: { dueDate: "asc" },
+                take: 1,
+              },
+              assignedTo: { select: { id: true, name: true } },
+              assignedManager: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { sentAt: "desc" },
+        take: 200,
+      });
+
+      const rows = logs.map((log) => {
+        const cust = log.customer;
+        const inst = cust?.installments?.[0];
+        return {
+          id: log.id,
+          customerName: cust?.customerName || "—",
+          account: cust?.account || "—",
+          overdueAmount: inst?.balance || 0,
+          dueDate: inst?.dueDate ? new Date(inst.dueDate).toLocaleDateString("en-PK") : "—",
+          guarantorName: log.recipientName || (log.recipientType === "GUARANTOR_1" ? cust?.guarantor1Name : cust?.guarantor2Name) || "Guarantor",
+          guarantorPhone: log.recipientPhone,
+          guarantorType: log.recipientType,
+          escalationLevel: log.escalationLevel || 1,
+          messageType: log.messageType,
+          status: log.status,
+          sentAt: new Date(log.sentAt).toLocaleString("en-PK"),
+          recoveryOfficer: cust?.assignedTo?.name || cust?.recoveryPerson || "Unassigned",
+          manager: cust?.assignedManager?.name || "—",
+          messageText: log.messageText,
+        };
+      });
+
+      return NextResponse.json({
+        reportType: "GUARANTOR_ESCALATION",
+        count: rows.length,
+        rows,
+      });
+    }
 
     if (reportType === "DAILY") {
       const dayStart = startOfDay(baseDate);
@@ -16,28 +74,48 @@ export async function GET(req: NextRequest) {
 
       const [dueTodayAgg, collectedTodayAgg, overdueAgg, waSent, waFailed, todayInstallments] = await Promise.all([
         prisma.installment.aggregate({
-          where: { dueDate: { gte: dayStart, lte: dayEnd } },
+          where: {
+            dueDate: { gte: dayStart, lte: dayEnd },
+            customer: customerScope,
+          },
           _sum: { emi: true },
           _count: { _all: true },
         }),
         prisma.payment.aggregate({
-          where: { paymentDate: { gte: dayStart, lte: dayEnd } },
+          where: {
+            paymentDate: { gte: dayStart, lte: dayEnd },
+            customer: customerScope,
+          },
           _sum: { amount: true },
           _count: { _all: true },
         }),
         prisma.installment.aggregate({
-          where: { status: "OVERDUE" },
+          where: {
+            status: "OVERDUE",
+            customer: customerScope,
+          },
           _sum: { balance: true },
           _count: { _all: true },
         }),
         prisma.messageLog.count({
-          where: { status: "SENT", sentAt: { gte: dayStart, lte: dayEnd } },
+          where: {
+            status: "SENT",
+            sentAt: { gte: dayStart, lte: dayEnd },
+            customer: customerScope,
+          },
         }),
         prisma.messageLog.count({
-          where: { status: "FAILED", sentAt: { gte: dayStart, lte: dayEnd } },
+          where: {
+            status: "FAILED",
+            sentAt: { gte: dayStart, lte: dayEnd },
+            customer: customerScope,
+          },
         }),
         prisma.installment.findMany({
-          where: { dueDate: { gte: dayStart, lte: dayEnd } },
+          where: {
+            dueDate: { gte: dayStart, lte: dayEnd },
+            customer: customerScope,
+          },
           include: { customer: true },
           take: 50,
         }),
@@ -81,16 +159,23 @@ export async function GET(req: NextRequest) {
 
       const [monthDueAgg, monthCollectedAgg, totalBalanceAgg] = await Promise.all([
         prisma.installment.aggregate({
-          where: { dueDate: { gte: monthStart, lte: monthEnd } },
+          where: {
+            dueDate: { gte: monthStart, lte: monthEnd },
+            customer: customerScope,
+          },
           _sum: { emi: true },
           _count: { _all: true },
         }),
         prisma.payment.aggregate({
-          where: { paymentDate: { gte: monthStart, lte: monthEnd } },
+          where: {
+            paymentDate: { gte: monthStart, lte: monthEnd },
+            customer: customerScope,
+          },
           _sum: { amount: true },
           _count: { _all: true },
         }),
         prisma.installment.aggregate({
+          where: { customer: customerScope },
           _sum: { balance: true },
         }),
       ]);
@@ -116,7 +201,10 @@ export async function GET(req: NextRequest) {
     if (reportType === "OFFICERS") {
       const officers = await prisma.customer.groupBy({
         by: ["recoveryPerson"],
-        where: { recoveryPerson: { not: null } },
+        where: {
+          ...customerScope,
+          recoveryPerson: { not: null },
+        },
         _count: { _all: true },
       });
 
@@ -125,7 +213,10 @@ export async function GET(req: NextRequest) {
           const officerName = o.recoveryPerson || "Unassigned";
           const customerIds = (
             await prisma.customer.findMany({
-              where: { recoveryPerson: officerName },
+              where: {
+                ...customerScope,
+                recoveryPerson: officerName,
+              },
               select: { id: true },
             })
           ).map((c) => c.id);
@@ -168,11 +259,11 @@ export async function GET(req: NextRequest) {
 
     if (reportType === "WHATSAPP") {
       const [queued, sending, sent, failed, cancelled] = await Promise.all([
-        prisma.messageQueue.count({ where: { status: "QUEUED" } }),
-        prisma.messageQueue.count({ where: { status: "SENDING" } }),
-        prisma.messageLog.count({ where: { status: "SENT" } }),
-        prisma.messageLog.count({ where: { status: "FAILED" } }),
-        prisma.messageQueue.count({ where: { status: "CANCELLED" } }),
+        prisma.messageQueue.count({ where: { status: "QUEUED", customer: customerScope } }),
+        prisma.messageQueue.count({ where: { status: "SENDING", customer: customerScope } }),
+        prisma.messageLog.count({ where: { status: "SENT", customer: customerScope } }),
+        prisma.messageLog.count({ where: { status: "FAILED", customer: customerScope } }),
+        prisma.messageQueue.count({ where: { status: "CANCELLED", customer: customerScope } }),
       ]);
 
       return NextResponse.json({

@@ -5,58 +5,30 @@ import { DEFAULT_TEMPLATES } from "../src/lib/template-renderer";
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🌱 Starting QistFlow Database Seed...");
+  console.log("🌱 Starting QistFlow Production Database Seed...");
 
-  // 1. Create Default Users (Configurable via ENV for production)
-  const initialAdminEmail = (process.env.INITIAL_ADMIN_EMAIL || "admin@qistflow.com").toLowerCase().trim();
-  const initialAdminPassword = process.env.INITIAL_ADMIN_PASSWORD || "admin123";
-  const isDefaultPassword = initialAdminPassword === "admin123";
+  // 1. Create Initial Admin ONLY if explicit ENV variables are provided
+  if (process.env.INITIAL_ADMIN_EMAIL && process.env.INITIAL_ADMIN_PASSWORD) {
+    const adminEmail = process.env.INITIAL_ADMIN_EMAIL.toLowerCase().trim();
+    const adminPasswordHash = await bcrypt.hash(process.env.INITIAL_ADMIN_PASSWORD, 10);
 
-  const adminPasswordHash = await bcrypt.hash(initialAdminPassword, 10);
-  const managerPassword = await bcrypt.hash(process.env.INITIAL_MANAGER_PASSWORD || "manager123", 10);
-  const officerPassword = await bcrypt.hash(process.env.INITIAL_OFFICER_PASSWORD || "officer123", 10);
-
-  const admin = await prisma.user.upsert({
-    where: { email: initialAdminEmail },
-    update: {},
-    create: {
-      name: process.env.INITIAL_ADMIN_NAME || "Super Admin",
-      email: initialAdminEmail,
-      passwordHash: adminPasswordHash,
-      phone: "03001234567",
-      role: "ADMIN",
-      branch: "HEAD_OFFICE",
-      mustChangePassword: isDefaultPassword,
-    },
-  });
-
-  const manager = await prisma.user.upsert({
-    where: { email: "manager@qistflow.com" },
-    update: {},
-    create: {
-      name: "Recovery Manager",
-      email: "manager@qistflow.com",
-      passwordHash: managerPassword,
-      phone: "03119876543",
-      role: "MANAGER",
-      branch: "QBLAN",
-    },
-  });
-
-  const officer = await prisma.user.upsert({
-    where: { email: "officer@qistflow.com" },
-    update: {},
-    create: {
-      name: "Ghulam Ahmed razaqi",
-      email: "officer@qistflow.com",
-      passwordHash: officerPassword,
-      phone: "03122621292",
-      role: "RECOVERY_OFFICER",
-      branch: "QBLAN",
-    },
-  });
-
-  console.log("✅ Created Users: Admin, Manager, Recovery Officer");
+    await prisma.user.upsert({
+      where: { email: adminEmail },
+      update: {},
+      create: {
+        name: process.env.INITIAL_ADMIN_NAME || "Administrator",
+        email: adminEmail,
+        passwordHash: adminPasswordHash,
+        phone: process.env.INITIAL_ADMIN_PHONE || null,
+        role: "ADMIN",
+        branch: "MAIN",
+        mustChangePassword: false,
+      },
+    });
+    console.log(`✅ Configured Admin user: ${adminEmail}`);
+  } else {
+    console.log("ℹ️ No hardcoded demo users seeded. Admin can sign in with Google or create credentials on initial launch.");
+  }
 
   // 2. Create Default Templates
   const templateMap: Record<string, string> = {};
@@ -197,6 +169,26 @@ async function main() {
     },
   });
 
+  await prisma.systemSetting.upsert({
+    where: { key: "guarantor_escalation_config" },
+    update: {},
+    create: {
+      key: "guarantor_escalation_config",
+      value: JSON.stringify({
+        enabled: true,
+        level1DelayDays: 1,
+        level2OverdueDays: 3,
+        level3OverdueDays: 7,
+        maxMessagesPerAccount: 3,
+        maxMessagesPerDay: 50,
+        onlyAfterCustomerFailure: false,
+        onlyAfterOverdue: true,
+        requireManagerApproval: false,
+      }),
+      description: "Guarantor recovery escalation policy parameters",
+    },
+  });
+
   console.log("✅ Initialized System Settings");
 
   // 5. Initial WhatsApp Session entry
@@ -210,7 +202,7 @@ async function main() {
     },
   });
 
-  console.log("🎉 Database seeding completed successfully!");
+  console.log("🎉 Production seed completed successfully!");
 }
 
 main()

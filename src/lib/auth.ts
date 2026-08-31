@@ -1,7 +1,8 @@
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "qistflow_super_secure_jwt_secret_key_2026_pk"
@@ -13,6 +14,8 @@ export interface TokenPayload {
   email: string;
   role: "ADMIN" | "MANAGER" | "RECOVERY_OFFICER";
   branch?: string | null;
+  managerId?: string | null;
+  mustChangePassword?: boolean;
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -64,4 +67,49 @@ export async function getSessionUser(req?: NextRequest): Promise<TokenPayload | 
 
 export function hasRole(userRole: string, allowedRoles: string[]): boolean {
   return allowedRoles.includes(userRole);
+}
+
+/**
+ * Standard server-side auth guard for Next.js route handlers
+ */
+export async function requireAuth(
+  req: NextRequest,
+  allowedRoles?: string[]
+): Promise<{ user: TokenPayload; errorResponse?: null } | { user: null; errorResponse: NextResponse }> {
+  const user = await getSessionUser(req);
+
+  if (!user) {
+    return {
+      user: null,
+      errorResponse: NextResponse.json(
+        { success: false, error: "Authentication required. Please log in." },
+        { status: 401 }
+      ),
+    };
+  }
+
+  if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+    return {
+      user: null,
+      errorResponse: NextResponse.json(
+        { success: false, error: "Access denied. Insufficient permissions." },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return { user, errorResponse: null };
+}
+
+/**
+ * Generates a high-entropy temporary password
+ */
+export function generateTemporaryPassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*";
+  let pwd = "";
+  const bytes = crypto.randomBytes(12);
+  for (let i = 0; i < 12; i++) {
+    pwd += chars[bytes[i] % chars.length];
+  }
+  return pwd;
 }

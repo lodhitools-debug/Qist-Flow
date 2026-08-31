@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   const session = await getSessionUser(req);
   if (!session) {
@@ -17,7 +19,18 @@ export async function GET(req: NextRequest) {
       role: true,
       branch: true,
       phone: true,
+      employeeCode: true,
+      department: true,
       mustChangePassword: true,
+      lastLoginAt: true,
+      managerId: true,
+      manager: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
     },
   });
 

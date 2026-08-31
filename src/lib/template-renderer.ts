@@ -2,6 +2,7 @@ import { format } from "date-fns";
 
 export interface TemplateContext {
   customerName?: string;
+  guarantorName?: string;
   account?: string;
   emi?: number;
   balance?: number;
@@ -14,6 +15,7 @@ export interface TemplateContext {
 }
 
 export const TEMPLATE_VARIABLES = [
+  { token: "{{guarantor_name}}", label: "Guarantor Name", sample: "Muhammad Rashid" },
   { token: "{{customer_name}}", label: "Customer Name", sample: "Mirza Amir Baig" },
   { token: "{{account}}", label: "Account Number", sample: "267000473" },
   { token: "{{emi}}", label: "EMI Amount", sample: "2,900" },
@@ -51,6 +53,7 @@ export function renderTemplate(templateString: string, context: TemplateContext)
   }
 
   const replacements: Record<string, string> = {
+    "{{guarantor_name}}": context.guarantorName || "Guarantor Sahab",
     "{{customer_name}}": context.customerName || "Customer",
     "{{account}}": context.account || "",
     "{{emi}}": formatCurrency(context.emi),
@@ -172,5 +175,62 @@ Waqt par payment karne ka shukriya!
 
 Account: {{account}}
 QistBazar Team`,
+  },
+  // Guarantor Escalation Templates
+  {
+    slug: "guarantor-first-notice-roman-urdu",
+    name: "Guarantor First Notice (Level 1/2)",
+    type: "GUARANTOR_FIRST_NOTICE",
+    language: "ROMAN_URDU",
+    body: `Assalam-o-Alaikum {{guarantor_name}},
+
+Yeh paigham aap ko bataur Zamanat-daar (Guarantor) bhaija ja raha hai.
+
+Customer: {{customer_name}}
+Account: {{account}}
+Pending Amount: Rs. {{balance}}
+Due Date: {{due_date}}
+
+Barah-e-karam customer se rabta kar ke unhein un ki pending qist ada karne ki yad-dihani karwayein taake un ka account regularize ho sake.
+
+Shukriya,
+{{recovery_person}}
+QistFlow Recovery Team ({{branch}})`,
+  },
+  {
+    slug: "guarantor-followup-roman-urdu",
+    name: "Guarantor Follow-up Notice (Level 2)",
+    type: "GUARANTOR_FOLLOWUP",
+    language: "ROMAN_URDU",
+    body: `Yad-dihani Paigham - Zamanat
+
+Assalam-o-Alaikum {{guarantor_name}},
+
+{{customer_name}} ke account ({{account}}) ki installment pichle {{days_overdue}} din se unpaid hai.
+
+Aap is account ke mohtaram guarantor hain. Hum customer se rabta karne ki koshish kar rahe hain. Barah-e-karam fori tor par customer se baat kar ke payment schedule confirm karwayein.
+
+Pending Balance: Rs. {{balance}}
+Recovery Officer: {{recovery_person}}
+QistFlow Recovery Department`,
+  },
+  {
+    slug: "guarantor-final-notice-roman-urdu",
+    name: "Guarantor Final Notice (Level 3)",
+    type: "GUARANTOR_FINAL_NOTICE",
+    language: "ROMAN_URDU",
+    body: `IMPORTANT NOTICE - GUARANTOR OBLIGATION
+
+Muazzaz {{guarantor_name}},
+
+{{customer_name}} (Account: {{account}}) ka account {{days_overdue}} din se overdue chal raha hai aur mutaddad koshishon ke bawajood payment masool nahi hui.
+
+Bataur Guarantor aap ki zimadari hai ke customer se rabta kar ke mamla fori hal karwayein.
+
+Total Balance: Rs. {{balance}}
+Branch: {{branch}}
+Recovery Contact: {{recovery_person}}
+
+Barah-e-karam mazeed karwai se pehle humari recovery team se rabta karein.`,
   },
 ];

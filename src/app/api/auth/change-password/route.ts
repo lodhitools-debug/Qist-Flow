@@ -1,20 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser, hashPassword, comparePassword } from "@/lib/auth";
+import { getSessionUser, hashPassword, comparePassword, signToken } from "@/lib/auth";
 import { logActivity } from "@/lib/audit";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
     const user = await getSessionUser(req);
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: "Authentication required" },
+        { status: 401 }
+      );
     }
 
-    const { currentPassword, newPassword } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { currentPassword, newPassword } = body;
 
     if (!newPassword || newPassword.length < 6) {
       return NextResponse.json(
-        { error: "New password must be at least 6 characters long" },
+        { success: false, error: "New password must be at least 6 characters long" },
         { status: 400 }
       );
     }
@@ -24,24 +30,37 @@ export async function POST(req: NextRequest) {
     });
 
     if (!dbUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: "User not found" },
+        { status: 404 }
+      );
     }
 
-    // Verify current password if user is changing existing password
-    if (currentPassword) {
+    // If user is not under forced password change, require current password validation
+    if (!dbUser.mustChangePassword) {
+      if (!currentPassword) {
+        return NextResponse.json(
+          { success: false, error: "Current password is required" },
+          { status: 400 }
+        );
+      }
       const isMatch = await comparePassword(currentPassword, dbUser.passwordHash);
       if (!isMatch) {
-        return NextResponse.json({ error: "Incorrect current password" }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "Current password is incorrect" },
+          { status: 400 }
+        );
       }
     }
 
     const newHash = await hashPassword(newPassword);
 
-    await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id: dbUser.id },
       data: {
         passwordHash: newHash,
         mustChangePassword: false,
+        lastPasswordChangeAt: new Date(),
       },
     });
 
@@ -51,11 +70,38 @@ export async function POST(req: NextRequest) {
       details: { email: dbUser.email },
     });
 
-    return NextResponse.json({
-      success: true,
-      message: "Password updated successfully",
+    // Refresh JWT token with mustChangePassword = false
+    const newToken = await signToken({
+      userId: updatedUser.id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      role: updatedUser.role as any,
+      branch: updatedUser.branch,
+      managerId: updatedUser.managerId,
+      mustChangePassword: false,
     });
+
+    const response = NextResponse.json({
+      success: true,
+      message: "Password updated successfully!",
+      mustChangePassword: false,
+    });
+
+    response.cookies.set({
+      name: "qistflow_token",
+      value: newToken,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    return response;
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to update password" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to update password" },
+      { status: 500 }
+    );
   }
 }

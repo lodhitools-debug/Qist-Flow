@@ -3,9 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { logActivity } from "@/lib/audit";
 import { calculateInstallmentStatus } from "@/lib/installment-engine";
+import { getUserCustomerScope, canAccessCustomer } from "@/lib/rbac";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    const session = await getSessionUser(req);
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search")?.trim() || "";
     const status = searchParams.get("status") || "";
@@ -16,32 +20,42 @@ export async function GET(req: NextRequest) {
 
     const where: any = {};
 
+    // 1. RBAC Customer Scope
+    let customerFilter: any = {};
+    if (session) {
+      customerFilter = getUserCustomerScope(session);
+    }
+
     if (status && status !== "ALL") {
       where.status = status;
     }
 
     if (branch && branch !== "ALL") {
-      where.customer = { branch };
+      customerFilter.branch = branch;
     }
 
     if (search) {
-      where.customer = {
-        ...where.customer,
-        OR: [
-          { customerName: { contains: search } },
-          { account: { contains: search } },
-          { primaryPhone: { contains: search } },
-          { recoveryPerson: { contains: search } },
-        ],
-      };
+      customerFilter.OR = [
+        { customerName: { contains: search, mode: "insensitive" } },
+        { account: { contains: search } },
+        { primaryPhone: { contains: search } },
+        { recoveryPerson: { contains: search, mode: "insensitive" } },
+      ];
     }
+
+    where.customer = customerFilter;
 
     const [total, installments] = await Promise.all([
       prisma.installment.count({ where }),
       prisma.installment.findMany({
         where,
         include: {
-          customer: true,
+          customer: {
+            include: {
+              assignedTo: { select: { id: true, name: true } },
+              assignedManager: { select: { id: true, name: true } },
+            },
+          },
           payments: { orderBy: { paymentDate: "desc" }, take: 5 },
         },
         orderBy: { dueDate: "asc" },
@@ -51,27 +65,45 @@ export async function GET(req: NextRequest) {
     ]);
 
     return NextResponse.json({
+      success: true,
       installments,
       pagination: {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit) || 1,
       },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to load installments" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to load installments" },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const session = await getSessionUser(req);
-    const { action, installmentId, customerId, amount, paymentDate, paymentMethod, overrideStatus, overrideReason } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { action, installmentId, customerId, amount, paymentDate, paymentMethod, overrideStatus, overrideReason } = body;
+
+    if (customerId && session) {
+      const isAllowed = await canAccessCustomer(session, customerId);
+      if (!isAllowed) {
+        return NextResponse.json(
+          { success: false, error: "Access denied. Customer outside your assigned scope." },
+          { status: 403 }
+        );
+      }
+    }
 
     if (action === "record-payment") {
       if (!customerId || !amount || amount <= 0) {
-        return NextResponse.json({ error: "Customer ID and positive amount are required" }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "Customer ID and positive amount are required" },
+          { status: 400 }
+        );
       }
 
       const pDate = paymentDate ? new Date(paymentDate) : new Date();
@@ -79,54 +111,54 @@ export async function POST(req: NextRequest) {
       const payment = await prisma.payment.create({
         data: {
           customerId,
-          installmentId,
+          installmentId: installmentId || undefined,
           amount: parseFloat(amount),
           paymentDate: pDate,
           paymentMethod: paymentMethod || "CASH",
-          notes: `Recorded by ${session?.name || "Staff"}`,
+          isVerified: true,
         },
       });
 
-      // Update installment balance and status
+      // Update Installment balance
       if (installmentId) {
         const inst = await prisma.installment.findUnique({ where: { id: installmentId } });
         if (inst) {
           const newBalance = Math.max(0, inst.balance - parseFloat(amount));
-          const statusRes = calculateInstallmentStatus({
+          const evalResult = calculateInstallmentStatus({
             dueDate: inst.dueDate,
-            emi: inst.emi,
             balance: newBalance,
-            lastPaymentDate: pDate,
-            lastPaymentAmount: parseFloat(amount),
-            installmentTotal: inst.installmentTotal,
+            emi: inst.emi,
           });
 
           await prisma.installment.update({
             where: { id: installmentId },
             data: {
               balance: newBalance,
+              status: evalResult.status,
               lastPaymentDate: pDate,
               lastPaymentAmount: parseFloat(amount),
-              status: statusRes.status as any,
             },
           });
         }
       }
 
       await logActivity({
-        userId: session?.userId,
-        action: "MANUAL_PAYMENT",
+        userId: session?.userId || null,
+        action: "PAYMENT_RECORDED",
         entityType: "Payment",
         entityId: payment.id,
-        details: { customerId, amount: parseFloat(amount), paymentDate: pDate },
+        details: { customerId, amount: parseFloat(amount), paymentMethod },
       });
 
-      return NextResponse.json({ success: true, message: "Payment recorded successfully", payment });
+      return NextResponse.json({ success: true, payment });
     }
 
     if (action === "override-status") {
       if (!installmentId || !overrideStatus) {
-        return NextResponse.json({ error: "Installment ID and override status are required" }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "Installment ID and status are required" },
+          { status: 400 }
+        );
       }
 
       const updated = await prisma.installment.update({
@@ -134,23 +166,26 @@ export async function POST(req: NextRequest) {
         data: {
           status: overrideStatus,
           statusOverridden: true,
-          overrideReason: overrideReason || `Manually overridden by ${session?.name || "Admin"}`,
+          overrideReason: overrideReason || `Overridden by ${session?.name || "User"}`,
         },
       });
 
       await logActivity({
-        userId: session?.userId,
-        action: "STATUS_OVERRIDE",
+        userId: session?.userId || null,
+        action: "INSTALLMENT_STATUS_OVERRIDE",
         entityType: "Installment",
         entityId: installmentId,
-        details: { status: overrideStatus, reason: overrideReason },
+        details: { overrideStatus, overrideReason },
       });
 
       return NextResponse.json({ success: true, installment: updated });
     }
 
-    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+    return NextResponse.json({ success: false, error: "Invalid action" }, { status: 400 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to process installment action" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || "Operation failed" },
+      { status: 500 }
+    );
   }
 }

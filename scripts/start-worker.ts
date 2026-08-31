@@ -2,11 +2,44 @@ process.env.IS_WORKER = "true";
 
 import http from "http";
 import { waWebProvider } from "../src/lib/whatsapp/web-provider";
-import { processQueueWorker } from "../src/lib/whatsapp/message-queue";
+import { processQueueWorker, getQueueStats } from "../src/lib/whatsapp/message-queue";
 import { runReminderScheduler } from "../src/lib/scheduler/reminder-cron";
 
 const HTTP_PORT = parseInt(process.env.WORKER_HTTP_PORT || process.env.PORT || "8080", 10);
 const SERVICE_SECRET = process.env.WHATSAPP_SERVICE_SECRET || "";
+
+let isQueueLoopRunning = false;
+let lastHeartbeat = new Date();
+let lastSuccessfulMessageAt: Date | null = null;
+let lastProcessedCount = 0;
+
+async function runQueueStep() {
+  if (isQueueLoopRunning) return;
+  isQueueLoopRunning = true;
+  lastHeartbeat = new Date();
+
+  try {
+    const res = await processQueueWorker(10);
+    lastProcessedCount = res.processed;
+    if (res.sent > 0) {
+      lastSuccessfulMessageAt = new Date();
+    }
+
+    if (res.processed > 0) {
+      console.log(`[Fast Queue Worker] Processed: ${res.processed} | Sent: ${res.sent} | Failed: ${res.failed}`);
+      // If messages were processed, poll again quickly in 1 second
+      setTimeout(runQueueStep, 1000);
+    } else {
+      // Queue is empty, poll again in 3 seconds
+      setTimeout(runQueueStep, 3000);
+    }
+  } catch (err) {
+    console.error("[Queue Worker Error]:", err);
+    setTimeout(runQueueStep, 4000);
+  } finally {
+    isQueueLoopRunning = false;
+  }
+}
 
 async function startWorker() {
   console.log("==========================================");
@@ -14,22 +47,14 @@ async function startWorker() {
   console.log("==========================================");
 
   // 1. Initialize WhatsApp connection
-  console.log("📱 Initializing WhatsApp Web Connection...");
+  console.log("📱 Initializing WhatsApp Web Connection on AlwaysData...");
   await waWebProvider.init().catch((err) => {
     console.warn("⚠️ Initial WhatsApp pairing awaiting QR scan or reconnect:", err.message);
   });
 
-  // 2. Schedule Queue Processing loop (Every 15 seconds)
-  setInterval(async () => {
-    try {
-      const res = await processQueueWorker(10);
-      if (res.processed > 0) {
-        console.log(`[Queue Worker] Processed: ${res.processed} | Sent: ${res.sent} | Failed: ${res.failed}`);
-      }
-    } catch (err) {
-      console.error("[Queue Worker Error]:", err);
-    }
-  }, 15000);
+  // 2. Start Adaptive Queue Processing Loop (1-3s polling)
+  console.log("⚡ Starting Fast Adaptive Queue Polling Loop...");
+  setTimeout(runQueueStep, 1500);
 
   // 3. Schedule Reminder Rule Evaluation (Every 15 minutes)
   setInterval(async () => {
@@ -38,6 +63,8 @@ async function startWorker() {
       const res = await runReminderScheduler(true);
       if (res.enqueued > 0) {
         console.log(`[Reminder Scheduler] Enqueued ${res.enqueued} reminder(s) | Skipped ${res.duplicatesSkipped} duplicates`);
+        // Wake queue worker immediately
+        runQueueStep();
       }
     } catch (err) {
       console.error("[Reminder Scheduler Error]:", err);
@@ -49,10 +76,32 @@ async function startWorker() {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     const pathname = url.pathname;
 
-    // Health check endpoint
+    // Health check endpoint (Public safe telemetry without secret leak)
     if (pathname === "/health" || pathname === "/api/health") {
+      let queueStats = { queued: 0, sending: 0, sentToday: 0, failedToday: 0 };
+      let waInfo: { status: string; phone: string | null } = { status: "DISCONNECTED", phone: null };
+
+      try {
+        queueStats = await getQueueStats();
+        const info = await waWebProvider.getConnectedInfo();
+        waInfo = { status: info.status, phone: info.phone || null };
+      } catch {}
+
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "ok", worker: "running", timestamp: new Date().toISOString() }));
+      res.end(
+        JSON.stringify({
+          status: "ok",
+          workerStatus: "running",
+          whatsAppConnectionState: waInfo.status,
+          connectedPhone: waInfo.phone,
+          queueStats,
+          lastHeartbeat: lastHeartbeat.toISOString(),
+          lastSuccessfulMessage: lastSuccessfulMessageAt ? lastSuccessfulMessageAt.toISOString() : null,
+          schedulerState: "active",
+          ruleEvaluationIntervalMinutes: 15,
+          timestamp: new Date().toISOString(),
+        })
+      );
       return;
     }
 
@@ -67,6 +116,14 @@ async function startWorker() {
     }
 
     try {
+      // Trigger Queue Wakeup Endpoint
+      if (req.method === "POST" && pathname === "/api/wa/trigger-queue") {
+        runQueueStep();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, message: "Queue loop triggered" }));
+        return;
+      }
+
       if (req.method === "GET" && pathname === "/api/wa/status") {
         const info = await waWebProvider.getConnectedInfo();
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -96,6 +153,9 @@ async function startWorker() {
           try {
             const payload = JSON.parse(body || "{}");
             const result = await waWebProvider.sendMessage(payload);
+            if (result.success) {
+              lastSuccessfulMessageAt = new Date();
+            }
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify(result));
           } catch (err: any) {
@@ -107,31 +167,33 @@ async function startWorker() {
       }
 
       res.writeHead(404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Endpoint not found" }));
+      res.end(JSON.stringify({ error: "Route not found" }));
     } catch (err: any) {
+      console.error("[HTTP Worker Exception]:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err.message || "Internal server error" }));
+      res.end(JSON.stringify({ error: err.message }));
     }
   });
 
+  // Graceful Shutdown
+  const gracefulShutdown = () => {
+    console.log("\n🛑 Graceful worker shutdown initiated...");
+    server.close(() => {
+      console.log("HTTP microservice closed.");
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 4000);
+  };
+
+  process.on("SIGINT", gracefulShutdown);
+  process.on("SIGTERM", gracefulShutdown);
+
   server.listen(HTTP_PORT, () => {
-    console.log(`🌐 WhatsApp Worker HTTP Microservice listening on port ${HTTP_PORT}`);
-    console.log("✅ Background Worker & Scheduler are running smoothly!");
+    console.log(`📡 WhatsApp HTTP Microservice listening on port ${HTTP_PORT}`);
   });
 }
 
 startWorker().catch((err) => {
-  console.error("Worker startup failed:", err);
+  console.error("❌ Fatal Background Worker Crash:", err);
   process.exit(1);
-});
-
-// Graceful shutdown
-process.on("SIGINT", async () => {
-  console.log("Shutting down worker...");
-  process.exit(0);
-});
-
-process.on("SIGTERM", async () => {
-  console.log("Shutting down worker...");
-  process.exit(0);
 });

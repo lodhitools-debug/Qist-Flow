@@ -3,33 +3,49 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { logActivity } from "@/lib/audit";
 import { formatPhoneNumber } from "@/lib/excel/mapper";
+import { getUserCustomerScope } from "@/lib/rbac";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    const session = await getSessionUser(req);
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search")?.trim() || "";
     const branch = searchParams.get("branch") || "";
     const status = searchParams.get("status") || "";
     const recoveryPerson = searchParams.get("recoveryPerson") || "";
+    const assignedToUserId = searchParams.get("assignedToUserId") || "";
     const page = parseInt(searchParams.get("page") || "1", 10);
     const limit = parseInt(searchParams.get("limit") || "25", 10);
     const skip = (page - 1) * limit;
 
     const where: any = {};
 
-    // Global Search across Name, Phone, CNIC, Account, Web No, IMEI, Recovery Person
+    // 1. Enforce Server-Side RBAC Scoping
+    if (session) {
+      const scope = getUserCustomerScope(session);
+      Object.assign(where, scope);
+    }
+
+    // 2. Global Search
     if (search) {
-      where.OR = [
-        { customerName: { contains: search } },
-        { primaryPhone: { contains: search } },
-        { secondaryPhone: { contains: search } },
-        { account: { contains: search } },
-        { cnic: { contains: search } },
-        { webNo: { contains: search } },
-        { imei1: { contains: search } },
-        { imei2: { contains: search } },
-        { recoveryPerson: { contains: search } },
-        { productName: { contains: search } },
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { customerName: { contains: search, mode: "insensitive" } },
+            { primaryPhone: { contains: search } },
+            { secondaryPhone: { contains: search } },
+            { account: { contains: search } },
+            { cnic: { contains: search } },
+            { webNo: { contains: search, mode: "insensitive" } },
+            { imei1: { contains: search } },
+            { imei2: { contains: search } },
+            { recoveryPerson: { contains: search, mode: "insensitive" } },
+            { productName: { contains: search, mode: "insensitive" } },
+          ],
+        },
       ];
     }
 
@@ -39,6 +55,10 @@ export async function GET(req: NextRequest) {
 
     if (recoveryPerson && recoveryPerson !== "ALL") {
       where.recoveryPerson = recoveryPerson;
+    }
+
+    if (assignedToUserId && assignedToUserId !== "ALL") {
+      where.assignedToUserId = assignedToUserId;
     }
 
     if (status && status !== "ALL") {
@@ -54,6 +74,12 @@ export async function GET(req: NextRequest) {
       prisma.customer.findMany({
         where,
         include: {
+          assignedTo: {
+            select: { id: true, name: true, phone: true },
+          },
+          assignedManager: {
+            select: { id: true, name: true },
+          },
           installments: {
             take: 1,
             orderBy: { createdAt: "desc" },
@@ -66,24 +92,34 @@ export async function GET(req: NextRequest) {
     ]);
 
     return NextResponse.json({
+      success: true,
       customers,
       pagination: {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit) || 1,
       },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to fetch customers" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to fetch customers" },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const session = await getSessionUser(req);
-    const body = await req.json();
+    if (!session || session.role === "RECOVERY_OFFICER") {
+      return NextResponse.json(
+        { success: false, error: "Access denied. Only Admins and Managers can create customers manually." },
+        { status: 403 }
+      );
+    }
 
+    const body = await req.json();
     const {
       account,
       customerName,
@@ -104,27 +140,25 @@ export async function POST(req: NextRequest) {
       salesPerson,
       recoveryPerson,
       comment,
-      emi,
-      balance,
-      dueDate,
-      installmentTotal,
+      assignedToUserId,
     } = body;
 
     if (!account || !customerName || !primaryPhone) {
-      return NextResponse.json({ error: "Account, Customer Name, and Primary Phone are required" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "Account, Customer Name, and Primary Phone are required" },
+        { status: 400 }
+      );
     }
 
-    const phoneObj = formatPhoneNumber(primaryPhone);
-    if (!phoneObj.isValid) {
-      return NextResponse.json({ error: "Invalid primary phone number format" }, { status: 400 });
-    }
+    const cleanPrimary = formatPhoneNumber(primaryPhone).clean;
+    const cleanSecondary = secondaryPhone ? formatPhoneNumber(secondaryPhone).clean : undefined;
 
     const customer = await prisma.customer.create({
       data: {
         account,
         customerName,
-        primaryPhone: phoneObj.clean,
-        secondaryPhone: secondaryPhone ? formatPhoneNumber(secondaryPhone).clean : undefined,
+        primaryPhone: cleanPrimary,
+        secondaryPhone: cleanSecondary,
         cnic,
         webNo,
         address,
@@ -134,21 +168,14 @@ export async function POST(req: NextRequest) {
         imei1,
         imei2,
         guarantor1Name,
-        guarantor1Phone,
+        guarantor1Phone: guarantor1Phone ? formatPhoneNumber(guarantor1Phone).clean : undefined,
         guarantor2Name,
-        guarantor2Phone,
+        guarantor2Phone: guarantor2Phone ? formatPhoneNumber(guarantor2Phone).clean : undefined,
         salesPerson,
         recoveryPerson,
         comment,
-        installments: {
-          create: {
-            emi: parseFloat(emi) || 0,
-            balance: parseFloat(balance) || parseFloat(emi) || 0,
-            installmentTotal: parseFloat(installmentTotal) || 0,
-            dueDate: dueDate ? new Date(dueDate) : null,
-            status: "UNKNOWN",
-          },
-        },
+        assignedToUserId: assignedToUserId || null,
+        assignedManagerId: session.role === "MANAGER" ? session.userId : null,
       },
     });
 
@@ -157,14 +184,20 @@ export async function POST(req: NextRequest) {
       action: "CUSTOMER_CREATE",
       entityType: "Customer",
       entityId: customer.id,
-      details: { account, customerName, primaryPhone: phoneObj.clean },
+      details: { account: customer.account, customerName: customer.customerName },
     });
 
     return NextResponse.json({ success: true, customer });
   } catch (error: any) {
     if (error.code === "P2002") {
-      return NextResponse.json({ error: "A customer with this Account number already exists" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "A customer with this Account number already exists" },
+        { status: 400 }
+      );
     }
-    return NextResponse.json({ error: error.message || "Failed to create customer" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to create customer" },
+      { status: 500 }
+    );
   }
 }

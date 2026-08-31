@@ -1,18 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getWhatsAppProvider } from "@/lib/whatsapp/provider-factory";
 import { getSessionUser } from "@/lib/auth";
 import { logActivity } from "@/lib/audit";
 import { enqueueMessage } from "@/lib/whatsapp/message-queue";
 import { prisma } from "@/lib/prisma";
+import { canAccessCustomer } from "@/lib/rbac";
+import { getEscalationConfig } from "@/lib/escalation/escalation-engine";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 10;
 
 export async function POST(req: NextRequest) {
   try {
     const session = await getSessionUser(req);
     const body = await req.json().catch(() => ({}));
-    const { customerId, recipientPhone, messageText, installmentId } = body;
+    const customerId = body.customerId;
+    const recipientPhone = body.recipientPhone || body.phone;
+    const recipientName = body.recipientName;
+    const recipientType = body.recipientType || "CUSTOMER";
+    const guarantorId = body.guarantorId || (recipientType !== "CUSTOMER" ? recipientType : undefined);
+    const messageText = body.messageText || body.message;
+    const installmentId = body.installmentId;
+    const messageType = body.messageType || (recipientType !== "CUSTOMER" ? "GUARANTOR_FIRST_NOTICE" : "MANUAL");
+    const escalationLevel = Number(body.escalationLevel) || (recipientType !== "CUSTOMER" ? 1 : 0);
 
     if (!recipientPhone || !messageText) {
       return NextResponse.json(
@@ -21,7 +30,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Normalize phone number to standard format
+    // Role & Customer Scope Authorization Check
+    if (session && customerId) {
+      const isAllowed = await canAccessCustomer(session, customerId);
+      if (!isAllowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Access denied. Customer outside your assigned portfolio.",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Normalize phone number to international E.164 without plus: 92300XXXXXXX
     let cleanPhone = String(recipientPhone).replace(/[^0-9]/g, "");
     if (cleanPhone.startsWith("03") && cleanPhone.length === 11) {
       cleanPhone = "92" + cleanPhone.substring(1);
@@ -29,7 +52,7 @@ export async function POST(req: NextRequest) {
       cleanPhone = "92" + cleanPhone;
     }
 
-    // Check opt-out
+    // Check opt-out status
     if (customerId) {
       const customer = await prisma.customer.findUnique({
         where: { id: customerId },
@@ -40,121 +63,96 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            error: "Customer has opted out of WhatsApp reminders. Cannot send message.",
+            error: "Customer has opted out of WhatsApp messages.",
           },
           { status: 400 }
         );
       }
     }
 
-    // Attempt direct dispatch via provider
-    let sendResult = { success: false, messageId: undefined as string | undefined, error: undefined as string | undefined };
-    try {
-      const provider = getWhatsAppProvider();
-      const connState = await provider.getConnectionState();
-
-      if (connState === "CONNECTED") {
-        const directRes = await provider.sendMessage({
-          recipientPhone: cleanPhone,
-          messageText,
-          customerId,
-          installmentId,
-        });
-
-        if (directRes && directRes.success) {
-          sendResult = {
-            success: true,
-            messageId: directRes.messageId,
-            error: undefined,
-          };
-        } else {
-          sendResult = {
-            success: false,
-            messageId: undefined,
-            error: directRes?.error || "Direct dispatch failed",
-          };
-        }
+    // Check if guarantor escalation requires manager approval
+    let approvalStatus: "NOT_REQUIRED" | "PENDING_APPROVAL" = "NOT_REQUIRED";
+    if (recipientType !== "CUSTOMER") {
+      const escConfig = await getEscalationConfig();
+      if (escConfig.requireManagerApproval && session?.role === "RECOVERY_OFFICER") {
+        approvalStatus = "PENDING_APPROVAL";
       }
-    } catch (provErr: any) {
-      console.warn("[Send Manual Direct Send Warning]:", provErr.message);
-      sendResult = {
-        success: false,
-        messageId: undefined,
-        error: provErr.message,
-      };
     }
 
-    if (sendResult.success) {
-      // 1. Log sent message in MessageLog
-      await prisma.messageLog.create({
-        data: {
-          direction: "OUTBOUND",
-          recipientPhone: cleanPhone,
-          customerId: customerId || null,
-          messageText,
-          messageType: "MANUAL",
-          status: "SENT",
-          waMessageId: sendResult.messageId || "wa_manual_" + Date.now(),
-          sentAt: new Date(),
-        },
-      }).catch(() => {});
-
-      await logActivity({
-        userId: session?.userId,
-        action: "MANUAL_MESSAGE",
-        entityType: "Customer",
-        entityId: customerId,
-        details: { recipientPhone: cleanPhone, messageText: messageText.substring(0, 60) + "..." },
-      }).catch(() => {});
-
-      return NextResponse.json({
-        success: true,
-        status: "SENT",
-        message: "WhatsApp message sent successfully!",
-        messageId: sendResult.messageId,
-      });
-    }
-
-    // Fallback: Enqueue message in persistent MessageQueue for background worker delivery
-    const qRes = await enqueueMessage({
+    // Fast queue insertion
+    const queueResult = await enqueueMessage({
       recipientPhone: cleanPhone,
+      recipientName,
+      recipientType,
+      guarantorId,
+      customerId: customerId || undefined,
+      installmentId: installmentId || undefined,
+      messageType,
+      escalationLevel,
+      approvalStatus,
+      escalationReason: "Manual Dispatch / Officer Request",
       messageText,
-      customerId,
-      installmentId,
-      messageType: "MANUAL",
-      priority: 10, // High priority for manual messages
+      priority: 100, // Highest priority
     });
 
-    if (qRes.success) {
-      await logActivity({
-        userId: session?.userId,
-        action: "MANUAL_MESSAGE_QUEUED",
-        entityType: "Customer",
-        entityId: customerId,
-        details: { recipientPhone: cleanPhone, queueId: qRes.queueId },
-      }).catch(() => {});
-
-      return NextResponse.json({
-        success: true,
-        status: "QUEUED",
-        message: "Message queued for delivery to WhatsApp.",
-        queueId: qRes.queueId,
-      });
+    if (!queueResult.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: queueResult.error || "Failed to queue message",
+          isDuplicate: queueResult.isDuplicate,
+        },
+        { status: 400 }
+      );
     }
 
-    return NextResponse.json(
-      {
-        success: false,
-        error: qRes.error || "Failed to deliver or queue message",
+    // Audit log
+    await logActivity({
+      userId: session?.userId || null,
+      action: approvalStatus === "PENDING_APPROVAL" ? "GUARANTOR_ESCALATION_REQUESTED" : "WHATSAPP_MANUAL_QUEUED",
+      entityType: "MessageQueue",
+      entityId: queueResult.queueId,
+      details: {
+        recipientPhone: cleanPhone,
+        recipientType,
+        guarantorId,
+        customerId,
+        priority: 100,
+        approvalStatus,
       },
-      { status: 500 }
-    );
+    }).catch(() => {});
+
+    // Notify AlwaysData worker if not pending approval
+    if (approvalStatus !== "PENDING_APPROVAL") {
+      const workerUrl = process.env.WHATSAPP_SERVICE_URL;
+      const workerSecret = process.env.WHATSAPP_SERVICE_SECRET;
+      if (workerUrl) {
+        fetch(`${workerUrl}/api/wa/trigger-queue`, {
+          method: "POST",
+          headers: {
+            "x-whatsapp-secret": workerSecret || "",
+          },
+          signal: AbortSignal.timeout(1000),
+        }).catch(() => {});
+      }
+    }
+
+    // Return immediate non-blocking JSON response
+    return NextResponse.json({
+      success: true,
+      status: approvalStatus === "PENDING_APPROVAL" ? "PENDING_APPROVAL" : "QUEUED",
+      queueId: queueResult.queueId,
+      recipientPhone: cleanPhone,
+      message:
+        approvalStatus === "PENDING_APPROVAL"
+          ? "Guarantor escalation notice submitted for Manager Approval."
+          : "Message queued successfully. Fast dispatcher is delivering to WhatsApp.",
+    });
   } catch (error: any) {
-    console.error("[Send Manual Exception]:", error);
     return NextResponse.json(
       {
         success: false,
-        error: error.message || "Internal server error occurred while sending message",
+        error: error.message || "Failed to process message request",
       },
       { status: 500 }
     );

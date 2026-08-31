@@ -9,33 +9,54 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(cuid())
-  name          String
-  email         String         @unique
-  passwordHash  String
-  phone         String?
-  role          String         @default("RECOVERY_OFFICER") // ADMIN, MANAGER, RECOVERY_OFFICER
-  branch        String?
-  isActive      Boolean        @default(true)
-  mustChangePassword Boolean   @default(false)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id                  String               @id @default(cuid())
+  name                String
+  email               String               @unique
+  passwordHash        String
+  phone               String?
+  role                String               @default("RECOVERY_OFFICER") // ADMIN, MANAGER, RECOVERY_OFFICER
+  branch              String?
+  employeeCode        String?              @unique
+  department          String?
+  isActive            Boolean              @default(true)
+  mustChangePassword  Boolean              @default(false)
+  lastLoginAt         DateTime?
+  lastPasswordChangeAt DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
-  activityLogs  ActivityLog[]
-  excelImports  ExcelImport[]
-  backups       BackupSnapshot[]
+  // Manager hierarchy (Officer -> Manager)
+  managerId           String?
+  manager             User?                @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  subordinates        User[]               @relation("UserManager")
+
+  // Customer Assignments
+  assignedCustomers   Customer[]           @relation("CustomerAssignedOfficer")
+  managedCustomers    Customer[]           @relation("CustomerAssignedManager")
+  customerAssignments CustomerAssignment[] @relation("AssignmentUser")
+  assignmentsMade     CustomerAssignment[] @relation("AssignmentAssignedBy")
+
+  // Activity & Audit
+  activityLogs        ActivityLog[]
+  excelImports        ExcelImport[]
+  backups             BackupSnapshot[]
+  passwordResets      PasswordResetToken[]
+
+  @@index([role])
+  @@index([managerId])
+  @@index([isActive])
 }
 
 model Customer {
-  id                  String         @id @default(cuid())
-  account             String         @unique // QistBazar Account number (indexed)
+  id                  String               @id @default(cuid())
+  account             String               @unique // QistBazar Account number (indexed)
   customerName        String
-  primaryPhone        String         // Cleaned +92 or 03 format
+  primaryPhone        String               // Cleaned +92 or 03 format
   secondaryPhone      String?
-  cnic                String?        // CNIC number (indexed)
-  webNo               String?        // Tracking / Web reference
+  cnic                String?              // CNIC number (indexed)
+  webNo               String?              // Tracking / Web reference
   address             String?
-  branch              String         @default("MAIN")
+  branch              String               @default("MAIN")
 
   // Product info
   productName         String?
@@ -46,18 +67,29 @@ model Customer {
   // Guarantors
   guarantor1Name      String?
   guarantor1Phone     String?
+  guarantor1Cnic      String?
+  guarantor1Address   String?
   guarantor2Name      String?
   guarantor2Phone     String?
+  guarantor2Cnic      String?
+  guarantor2Address   String?
 
-  // Staff assignment
+  // Staff assignment (Legacy Excel fields preserved)
   salesPerson         String?
-  recoveryPerson      String?        // Assigned recovery officer
+  recoveryPerson      String?              // Assigned recovery officer name in sheet
   omsRecoveryPerson   String?
   comment             String?
 
-  optedOut            Boolean        @default(false)
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
+  // Active User / Team Assignment
+  assignedToUserId    String?
+  assignedTo          User?                @relation("CustomerAssignedOfficer", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedManagerId   String?
+  assignedManager     User?                @relation("CustomerAssignedManager", fields: [assignedManagerId], references: [id], onDelete: SetNull)
+  assignments         CustomerAssignment[]
+
+  optedOut            Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   installments        Installment[]
   payments            Payment[]
@@ -70,30 +102,66 @@ model Customer {
   @@index([account])
   @@index([recoveryPerson])
   @@index([branch])
+  @@index([assignedToUserId])
+  @@index([assignedManagerId])
+}
+
+model CustomerAssignment {
+  id                  String               @id @default(cuid())
+  customerId          String
+  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User                 @relation("AssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedById        String?
+  assignedBy          User?                @relation("AssignmentAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+  role                String               @default("RECOVERY_OFFICER") // MANAGER, RECOVERY_OFFICER
+  assignedAt          DateTime             @default(now())
+  unassignedAt        DateTime?
+  isActive            Boolean              @default(true)
+  notes               String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([customerId])
+  @@index([userId])
+  @@index([isActive])
+}
+
+model PasswordResetToken {
+  id                  String               @id @default(cuid())
+  userId              String
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash           String               @unique
+  expiresAt           DateTime
+  usedAt              DateTime?
+  createdAt           DateTime             @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Installment {
-  id                  String             @id @default(cuid())
+  id                  String               @id @default(cuid())
   customerId          String
-  customer            Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  emi                 Float              @default(0) // Monthly installment amount
-  balance             Float              @default(0) // Remaining total balance
-  shortExcess         Float              @default(0) // Short or excess
-  advanceReceived     Float              @default(0) // Down payment
-  dueDate             DateTime?                     // Installment due date
-  saleDate            DateTime?                     // Contract sale date
-  noOfMonths          Int                @default(12)// Contract tenure
-  installmentTotal    Float              @default(0) // Total credit price
-  lastPaymentDate     DateTime?                     // Last recorded payment date
-  lastPaymentAmount   Float?                        // Last recorded payment amount
+  emi                 Float                @default(0) // Monthly installment amount
+  balance             Float                @default(0) // Remaining total balance
+  shortExcess         Float                @default(0) // Short or excess
+  advanceReceived     Float                @default(0) // Down payment
+  dueDate             DateTime?                       // Installment due date
+  saleDate            DateTime?                       // Contract sale date
+  noOfMonths          Int                  @default(12)// Contract tenure
+  installmentTotal    Float                @default(0) // Total credit price
+  lastPaymentDate     DateTime?                       // Last recorded payment date
+  lastPaymentAmount   Float?                          // Last recorded payment amount
 
-  status              String             @default("UNKNOWN") // UPCOMING, DUE_TODAY, OVERDUE, PAID, PARTIAL, UNKNOWN
-  statusOverridden    Boolean            @default(false)
+  status              String               @default("UNKNOWN") // UPCOMING, DUE_TODAY, OVERDUE, PAID, PARTIAL, UNKNOWN
+  statusOverridden    Boolean              @default(false)
   overrideReason      String?
 
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   payments            Payment[]
   messageQueues       MessageQueue[]
@@ -104,165 +172,183 @@ model Installment {
 }
 
 model Payment {
-  id              String       @id @default(cuid())
-  customerId      String
-  customer        Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  installmentId   String?
-  installment     Installment? @relation(fields: [installmentId], references: [id], onDelete: SetNull)
+  id                  String               @id @default(cuid())
+  customerId          String
+  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  installmentId       String?
+  installment         Installment?         @relation(fields: [installmentId], references: [id], onDelete: SetNull)
 
-  amount          Float
-  paymentDate     DateTime     @default(now())
-  receiptNo       String?
-  paymentMethod   String       @default("CASH")
-  notes           String?
-  isVerified      Boolean      @default(true)
-  createdAt       DateTime     @default(now())
+  amount              Float
+  paymentDate         DateTime             @default(now())
+  receiptNo           String?
+  paymentMethod       String               @default("CASH")
+  notes               String?
+  isVerified          Boolean              @default(true)
+  createdAt           DateTime             @default(now())
 
   @@index([customerId])
   @@index([paymentDate])
 }
 
 model ExcelImport {
-  id              String           @id @default(cuid())
-  fileName        String
-  fileSize        Int              @default(0)
-  totalRows       Int              @default(0)
-  newRecords      Int              @default(0)
-  updatedRecords  Int              @default(0)
-  errorCount      Int              @default(0)
-  status          String           @default("SUCCESS") // SUCCESS, PARTIAL, FAILED
-  columnMapping   String?          // JSON representation of column mappings
-  errorsJson      String?          // JSON array of detailed validation errors
-  snapshotJson    String?          // JSON snapshot for rollback safety
-  userId          String?
-  user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt       DateTime         @default(now())
+  id                  String               @id @default(cuid())
+  fileName            String
+  fileSize            Int                  @default(0)
+  totalRows           Int                  @default(0)
+  newRecords          Int                  @default(0)
+  updatedRecords      Int                  @default(0)
+  errorCount          Int                  @default(0)
+  status              String               @default("SUCCESS") // SUCCESS, PARTIAL, FAILED
+  columnMapping       String?              // JSON representation of column mappings
+  errorsJson          String?              // JSON array of detailed validation errors
+  snapshotJson        String?              // JSON snapshot for rollback safety
+  userId              String?
+  user                User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt           DateTime             @default(now())
 
-  importRows      ExcelImportRow[]
+  importRows          ExcelImportRow[]
 
   @@index([createdAt])
 }
 
 model ExcelImportRow {
-  id              String       @id @default(cuid())
-  importId        String
-  excelImport     ExcelImport  @relation(fields: [importId], references: [id], onDelete: Cascade)
-  rowNumber       Int
-  accountNumber   String?
-  customerName    String?
-  phone           String?
-  status          String       // SUCCESS, ERROR, SKIPPED
-  errorMessage    String?
-  rawDataJson     String?
+  id                  String               @id @default(cuid())
+  importId            String
+  excelImport         ExcelImport          @relation(fields: [importId], references: [id], onDelete: Cascade)
+  rowNumber           Int
+  accountNumber       String?
+  customerName        String?
+  phone               String?
+  status              String               // SUCCESS, ERROR, SKIPPED
+  errorMessage        String?
+  rawDataJson         String?
 
   @@index([importId])
   @@index([status])
 }
 
 model MessageTemplate {
-  id              String         @id @default(cuid())
-  name            String
-  slug            String         @unique
-  type            String         @default("DUE_TODAY") // BEFORE_DUE, DUE_TODAY, OVERDUE, PAYMENT_RECEIVED, CUSTOM
-  language        String         @default("ROMAN_URDU") // ROMAN_URDU, URDU, ENGLISH
-  body            String
-  variables       String?        // Comma-separated variable names
-  isActive        Boolean        @default(true)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id                  String               @id @default(cuid())
+  name                String
+  slug                String               @unique
+  type                String               @default("DUE_TODAY") // BEFORE_DUE, DUE_TODAY, OVERDUE, PAYMENT_RECEIVED, CUSTOM
+  language            String               @default("ROMAN_URDU") // ROMAN_URDU, URDU, ENGLISH
+  body                String
+  variables           String?              // Comma-separated variable names
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
-  reminderRules   ReminderRule[]
-  messageQueues   MessageQueue[]
+  reminderRules       ReminderRule[]
+  messageQueues       MessageQueue[]
 }
 
 model ReminderRule {
-  id              String           @id @default(cuid())
-  name            String
-  ruleType        String           // BEFORE_DUE, DUE_TODAY, OVERDUE_1D, OVERDUE_3D, OVERDUE_7D, OVERDUE_15D
-  daysOffset      Int              // e.g. -1 for before due, 0 for due date, 1, 3, 7, 15 for overdue
-  timeWindowStart String           @default("10:00") // 24hr format "10:00"
-  timeWindowEnd   String           @default("19:00") // 24hr format "19:00"
-  templateId      String
-  template        MessageTemplate  @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  maxReminders    Int              @default(1)
-  minGapDays      Int              @default(1)
-  isActive        Boolean          @default(true)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id                  String               @id @default(cuid())
+  name                String
+  ruleType            String               // BEFORE_DUE, DUE_TODAY, OVERDUE_1D, OVERDUE_3D, OVERDUE_7D, OVERDUE_15D
+  daysOffset          Int                  // e.g. -1 for before due, 0 for due date, 1, 3, 7, 15 for overdue
+  timeWindowStart     String               @default("10:00") // 24hr format "10:00"
+  timeWindowEnd       String               @default("19:00") // 24hr format "19:00"
+  templateId          String
+  template            MessageTemplate      @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  maxReminders        Int                  @default(1)
+  minGapDays          Int                  @default(1)
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 }
 
 model WhatsAppSession {
-  id                String                 @id @default("default")
-  status            String                 @default("DISCONNECTED") // DISCONNECTED, CONNECTING, QR_READY, CONNECTED, FAILED
-  qrCode            String?
-  connectedPhone    String?
-  connectedName     String?
-  connectedAt       DateTime?
-  lastActiveAt      DateTime?
-  reconnectAttempts Int                    @default(0)
-  errorMessage      String?
-  updatedAt         DateTime               @updatedAt
+  id                  String               @id @default("default")
+  status              String               @default("DISCONNECTED") // DISCONNECTED, CONNECTING, QR_READY, CONNECTED, FAILED
+  qrCode              String?
+  connectedPhone      String?
+  connectedName       String?
+  connectedAt         DateTime?
+  lastActiveAt        DateTime?
+  reconnectAttempts   Int                  @default(0)
+  errorMessage        String?
+  updatedAt           DateTime             @updatedAt
 }
 
 model MessageQueue {
-  id              String           @id @default(cuid())
-  recipientPhone  String
-  customerId      String?
-  customer        Customer?        @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  installmentId   String?
-  installment     Installment?     @relation(fields: [installmentId], references: [id], onDelete: SetNull)
-  templateId      String?
-  template        MessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  id                  String               @id @default(cuid())
+  recipientPhone      String
+  recipientName       String?
+  recipientType       String               @default("CUSTOMER") // CUSTOMER, GUARANTOR_1, GUARANTOR_2
+  guarantorId         String?              // GUARANTOR_1, GUARANTOR_2
+  customerId          String?
+  customer            Customer?            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  installmentId       String?
+  installment         Installment?         @relation(fields: [installmentId], references: [id], onDelete: SetNull)
+  templateId          String?
+  template            MessageTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
   
-  messageType     String           @default("REMINDER") // REMINDER, MANUAL, PAYMENT_CONFIRMATION
-  messageText     String
-  status          String           @default("QUEUED") // QUEUED, SENDING, SENT, FAILED, CANCELLED
-  priority        Int              @default(0) // Higher = sent first
-  idempotencyKey  String           @unique // Hash: customerId + type + dueDate + cycle
-  scheduledFor    DateTime         @default(now())
-  sentAt          DateTime?
-  retryCount      Int              @default(0)
-  maxRetries      Int              @default(3)
-  errorMessage    String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  messageType         String               @default("REMINDER") // REMINDER, MANUAL, PAYMENT_CONFIRMATION, GUARANTOR_FIRST_NOTICE, GUARANTOR_FOLLOWUP, GUARANTOR_FINAL_NOTICE
+  escalationLevel     Int                  @default(0) // 0 = Customer, 1 = WhatsApp fail, 2 = Overdue, 3 = Final
+  approvalStatus      String               @default("NOT_REQUIRED") // NOT_REQUIRED, PENDING_APPROVAL, APPROVED, REJECTED
+  approvedByUserId    String?
+  approvedAt          DateTime?
+  rejectionReason     String?
+  escalationReason    String?
+
+  messageText         String
+  status              String               @default("QUEUED") // QUEUED, SENDING, SENT, FAILED, CANCELLED, RETRYING
+  priority            Int                  @default(0) // Higher = sent first
+  idempotencyKey      String               @unique // Hash: customerId + guarantorId + type + dueDate + cycle
+  scheduledFor        DateTime             @default(now())
+  sentAt              DateTime?
+  retryCount          Int                  @default(0)
+  maxRetries          Int                  @default(3)
+  errorMessage        String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@index([status])
+  @@index([approvalStatus, status])
+  @@index([recipientType])
+  @@index([escalationLevel])
   @@index([scheduledFor])
   @@index([recipientPhone])
   @@index([customerId])
 }
 
 model MessageLog {
-  id              String       @id @default(cuid())
-  direction       String       @default("OUTBOUND") // OUTBOUND, INBOUND
-  recipientPhone  String
-  senderPhone     String?
-  customerId      String?
-  customer        Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  messageText     String
-  messageType     String       @default("REMINDER")
-  status          String       @default("SENT") // SENT, DELIVERED, READ, FAILED
-  waMessageId     String?
-  errorMessage    String?
-  sentAt          DateTime     @default(now())
+  id                  String               @id @default(cuid())
+  direction           String               @default("OUTBOUND") // OUTBOUND, INBOUND
+  recipientPhone      String
+  recipientName       String?
+  recipientType       String               @default("CUSTOMER") // CUSTOMER, GUARANTOR_1, GUARANTOR_2
+  guarantorId         String?
+  escalationLevel     Int                  @default(0)
+  senderPhone         String?
+  customerId          String?
+  customer            Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  messageText         String
+  messageType         String               @default("REMINDER")
+  status              String               @default("SENT") // SENT, DELIVERED, READ, FAILED, UNKNOWN
+  waMessageId         String?
+  errorMessage        String?
+  sentAt              DateTime             @default(now())
 
   @@index([recipientPhone])
+  @@index([recipientType])
   @@index([customerId])
   @@index([sentAt])
   @@index([status])
 }
 
 model ActivityLog {
-  id          String   @id @default(cuid())
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  action      String   // LOGIN, EXCEL_IMPORT, REMINDER_SENT, etc.
-  entityType  String?  // Customer, Installment, Template, etc.
-  entityId    String?
-  details     String?  // JSON string
-  ipAddress   String?
-  createdAt   DateTime @default(now())
+  id                  String               @id @default(cuid())
+  userId              String?
+  user                User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action              String               // LOGIN, EXCEL_IMPORT, REMINDER_SENT, USER_CREATE, CUSTOMER_ASSIGN, etc.
+  entityType          String?              // Customer, Installment, User, CustomerAssignment, etc.
+  entityId            String?
+  details             String?              // JSON string
+  ipAddress           String?
+  createdAt           DateTime             @default(now())
 
   @@index([userId])
   @@index([action])
@@ -270,22 +356,22 @@ model ActivityLog {
 }
 
 model SystemSetting {
-  id          String   @id @default(cuid())
-  key         String   @unique
-  value       String   // JSON string
-  description String?
-  updatedAt   DateTime @updatedAt
+  id                  String               @id @default(cuid())
+  key                 String               @unique
+  value               String               // JSON string
+  description         String?
+  updatedAt           DateTime             @updatedAt
 }
 
 model BackupSnapshot {
-  id            String   @id @default(cuid())
-  name          String
-  type          String   @default("MANUAL") // AUTO_PRE_IMPORT, MANUAL, SCHEDULED
-  recordCounts  String?  // JSON counts
-  dataJson      String?  // JSON snapshot data or path
-  userId        String?
-  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt     DateTime @default(now())
+  id                  String               @id @default(cuid())
+  name                String
+  type                String               @default("MANUAL") // AUTO_PRE_IMPORT, MANUAL, SCHEDULED
+  recordCounts        String?              // JSON counts
+  dataJson            String?              // JSON snapshot data or path
+  userId              String?
+  user                User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt           DateTime             @default(now())
 
   @@index([createdAt])
 }

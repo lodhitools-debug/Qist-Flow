@@ -12,6 +12,7 @@ import {
   Users,
   Send,
   RefreshCw,
+  UserCheck,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -19,7 +20,7 @@ import autoTable from "jspdf-autotable";
 import clsx from "clsx";
 
 export default function ReportsPage() {
-  const [reportType, setReportType] = useState<"DAILY" | "MONTHLY" | "OFFICERS" | "WHATSAPP">("DAILY");
+  const [reportType, setReportType] = useState<"DAILY" | "MONTHLY" | "OFFICERS" | "WHATSAPP" | "GUARANTOR_ESCALATION">("DAILY");
   const [reportDate, setReportDate] = useState(new Date().toISOString().split("T")[0]);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -57,13 +58,9 @@ export default function ReportsPage() {
     if (!data) return;
 
     let sheetData: any[] = [];
-    if (reportType === "DAILY") {
+    if (reportType === "DAILY" || reportType === "OFFICERS" || reportType === "GUARANTOR_ESCALATION") {
       sheetData = data.rows || [];
-    } else if (reportType === "OFFICERS") {
-      sheetData = data.rows || [];
-    } else if (reportType === "MONTHLY") {
-      sheetData = [{ ...data.metrics }];
-    } else if (reportType === "WHATSAPP") {
+    } else if (reportType === "MONTHLY" || reportType === "WHATSAPP") {
       sheetData = [{ ...data.metrics }];
     }
 
@@ -79,11 +76,28 @@ export default function ReportsPage() {
 
     const doc = new jsPDF();
     doc.setFontSize(16);
-    doc.text(`QistFlow — ${reportType} Recovery Report`, 14, 18);
+    doc.text(`QistFlow — ${reportType.replace(/_/g, " ")} Report`, 14, 18);
     doc.setFontSize(10);
     doc.text(`Generated Date: ${reportDate} | QistBazar Operations`, 14, 25);
 
-    if (reportType === "DAILY" && data.rows) {
+    if (reportType === "GUARANTOR_ESCALATION" && data.rows) {
+      autoTable(doc, {
+        startY: 32,
+        head: [["Customer", "Account", "Overdue (PKR)", "Due Date", "Guarantor", "Phone", "Level", "Status", "Sent At", "Officer"]],
+        body: data.rows.map((r: any) => [
+          r.customerName,
+          r.account,
+          formatPKR(r.overdueAmount),
+          r.dueDate,
+          r.guarantorName,
+          r.guarantorPhone,
+          `Level ${r.escalationLevel}`,
+          r.status,
+          r.sentAt,
+          r.recoveryOfficer,
+        ]),
+      });
+    } else if (reportType === "DAILY" && data.rows) {
       autoTable(doc, {
         startY: 32,
         head: [["Account", "Customer Name", "Phone", "EMI (PKR)", "Balance (PKR)", "Status", "Officer"]],
@@ -122,7 +136,7 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -131,21 +145,21 @@ export default function ReportsPage() {
             <span>Recovery Reports & Analytics</span>
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Daily recoveries, monthly financial volume, recovery officer performance, and WhatsApp conversion metrics.
+            Daily recoveries, monthly financial volume, recovery officer performance, and guarantor escalation reports.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors min-h-[38px]"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
             <span>Export Excel</span>
           </button>
           <button
             onClick={handleExportPDF}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white border border-slate-700 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white border border-slate-700 transition-colors min-h-[38px]"
           >
             <FileText className="w-3.5 h-3.5" />
             <span>Export PDF</span>
@@ -154,21 +168,22 @@ export default function ReportsPage() {
       </div>
 
       {/* Filter & Subtabs Bar */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-2 overflow-x-auto">
           {[
             { id: "DAILY", label: "Daily Report" },
             { id: "MONTHLY", label: "Monthly Recovery" },
             { id: "OFFICERS", label: "Recovery Officers" },
+            { id: "GUARANTOR_ESCALATION", label: "Guarantor Escalations" },
             { id: "WHATSAPP", label: "WhatsApp Analytics" },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setReportType(tab.id as any)}
               className={clsx(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                "px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap min-h-[38px]",
                 reportType === tab.id
-                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700"
+                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 shadow-sm"
                   : "text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
               )}
             >
@@ -183,7 +198,7 @@ export default function ReportsPage() {
             type="date"
             value={reportDate}
             onChange={(e) => setReportDate(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-800 dark:text-slate-200 font-semibold"
+            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 font-semibold"
           />
         </div>
       </div>
@@ -196,6 +211,76 @@ export default function ReportsPage() {
         </div>
       ) : data ? (
         <div className="space-y-6">
+          {/* Guarantor Escalation Report Table */}
+          {reportType === "GUARANTOR_ESCALATION" && data.rows && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Guarantor Recovery Escalation Log ({data.rows.length} records)
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 text-slate-400 font-semibold uppercase text-[10px]">
+                    <tr>
+                      <th className="py-3 px-4">Customer</th>
+                      <th className="py-3 px-4">Account</th>
+                      <th className="py-3 px-4">Overdue Amount</th>
+                      <th className="py-3 px-4">Due Date</th>
+                      <th className="py-3 px-4">Guarantor</th>
+                      <th className="py-3 px-4">Phone</th>
+                      <th className="py-3 px-4">Level</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Sent At</th>
+                      <th className="py-3 px-4">Recovery Officer</th>
+                      <th className="py-3 px-4">Manager</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                    {data.rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="py-12 text-center text-slate-400">
+                          No guarantor escalation records found.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.rows.map((r: any) => (
+                        <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                          <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">{r.customerName}</td>
+                          <td className="py-3 px-4 font-mono font-semibold">{r.account}</td>
+                          <td className="py-3 px-4 font-bold text-rose-600">Rs. {formatPKR(r.overdueAmount)}</td>
+                          <td className="py-3 px-4 text-slate-500">{r.dueDate}</td>
+                          <td className="py-3 px-4 font-semibold text-purple-700 dark:text-purple-300">
+                            {r.guarantorName} ({r.guarantorType})
+                          </td>
+                          <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-300">{r.guarantorPhone}</td>
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                              Level {r.escalationLevel}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={clsx(
+                                "px-2 py-0.5 rounded text-[10px] font-bold",
+                                r.status === "SENT" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+                              )}
+                            >
+                              {r.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-500 text-[11px]">{r.sentAt}</td>
+                          <td className="py-3 px-4 text-slate-600 dark:text-slate-300">{r.recoveryOfficer}</td>
+                          <td className="py-3 px-4 text-slate-500">{r.manager}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Metrics Overview Cards */}
           {reportType === "DAILY" && data.metrics && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -265,7 +350,7 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {/* Table Details */}
+          {/* Table Details for OFFICERS */}
           {reportType === "OFFICERS" && data.rows && (
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
@@ -303,6 +388,7 @@ export default function ReportsPage() {
             </div>
           )}
 
+          {/* Table Details for DAILY */}
           {reportType === "DAILY" && data.rows && (
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
               <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300">

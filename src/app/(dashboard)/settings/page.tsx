@@ -13,13 +13,14 @@ import {
   AlertCircle,
   Play,
   RotateCcw,
-  Download,
+  UserCheck,
   Sliders,
+  Users,
 } from "lucide-react";
 import clsx from "clsx";
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<"BUSINESS" | "WHATSAPP" | "RULES" | "BACKUP">("BUSINESS");
+  const [activeTab, setActiveTab] = useState<"BUSINESS" | "WHATSAPP" | "ESCALATION" | "RULES" | "BACKUP">("BUSINESS");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -35,6 +36,17 @@ export default function SettingsPage() {
   const [maxDelay, setMaxDelay] = useState(14000);
   const [dailyLimit, setDailyLimit] = useState(250);
   const [antiBan, setAntiBan] = useState(true);
+
+  // Guarantor Escalation Policy Settings
+  const [escalationEnabled, setEscalationEnabled] = useState(true);
+  const [level1DelayDays, setLevel1DelayDays] = useState(1);
+  const [level2OverdueDays, setLevel2OverdueDays] = useState(3);
+  const [level3OverdueDays, setLevel3OverdueDays] = useState(7);
+  const [maxMessagesPerAccount, setMaxMessagesPerAccount] = useState(3);
+  const [maxMessagesPerDay, setMaxMessagesPerDay] = useState(50);
+  const [onlyAfterCustomerFailure, setOnlyAfterCustomerFailure] = useState(false);
+  const [onlyAfterOverdue, setOnlyAfterOverdue] = useState(true);
+  const [requireManagerApproval, setRequireManagerApproval] = useState(false);
 
   // Reminder Rules
   const [rules, setRules] = useState<any[]>([]);
@@ -70,6 +82,19 @@ export default function SettingsPage() {
           setMaxDelay(wa.maxDelayMs || maxDelay);
           setDailyLimit(wa.dailyLimit || dailyLimit);
           setAntiBan(wa.antiBanEnabled !== undefined ? wa.antiBanEnabled : true);
+        }
+
+        const esc = sData.settings?.guarantor_escalation_config;
+        if (esc) {
+          setEscalationEnabled(esc.enabled !== undefined ? esc.enabled : true);
+          setLevel1DelayDays(esc.level1DelayDays || 1);
+          setLevel2OverdueDays(esc.level2OverdueDays || 3);
+          setLevel3OverdueDays(esc.level3OverdueDays || 7);
+          setMaxMessagesPerAccount(esc.maxMessagesPerAccount || 3);
+          setMaxMessagesPerDay(esc.maxMessagesPerDay || 50);
+          setOnlyAfterCustomerFailure(esc.onlyAfterCustomerFailure || false);
+          setOnlyAfterOverdue(esc.onlyAfterOverdue !== undefined ? esc.onlyAfterOverdue : true);
+          setRequireManagerApproval(esc.requireManagerApproval || false);
         }
       }
 
@@ -141,6 +166,39 @@ export default function SettingsPage() {
 
       if (res.ok) {
         setNotice("WhatsApp rate-limiting and anti-ban settings saved!");
+      }
+    } catch (err: any) {
+      setNotice("Error: " + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveEscalation = async () => {
+    try {
+      setSaving(true);
+      setNotice(null);
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "guarantor_escalation_config",
+          value: {
+            enabled: escalationEnabled,
+            level1DelayDays: Number(level1DelayDays),
+            level2OverdueDays: Number(level2OverdueDays),
+            level3OverdueDays: Number(level3OverdueDays),
+            maxMessagesPerAccount: Number(maxMessagesPerAccount),
+            maxMessagesPerDay: Number(maxMessagesPerDay),
+            onlyAfterCustomerFailure,
+            onlyAfterOverdue,
+            requireManagerApproval,
+          },
+        }),
+      });
+
+      if (res.ok) {
+        setNotice("Guarantor Recovery Escalation settings saved successfully!");
       }
     } catch (err: any) {
       setNotice("Error: " + err.message);
@@ -225,7 +283,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6 max-w-5xl mx-auto pb-12">
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
@@ -233,7 +291,7 @@ export default function SettingsPage() {
           <span>System Settings & Operational Controls</span>
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-          Configure business details, anti-ban throttling parameters, automated reminder schedules, and database backups.
+          Configure business details, anti-ban throttling parameters, guarantor recovery escalations, automated reminder schedules, and database backups.
         </p>
       </div>
 
@@ -245,12 +303,13 @@ export default function SettingsPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-1">
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-1 overflow-x-auto">
         {[
           { id: "BUSINESS", label: "Business Profile", icon: Building },
-          { id: "WHATSAPP", label: "WhatsApp Anti-Ban & Limits", icon: QrCode },
-          { id: "RULES", label: "Automated Reminder Rules", icon: Bell },
-          { id: "BACKUP", label: "Database Backups & Restore", icon: Database },
+          { id: "WHATSAPP", label: "WhatsApp Anti-Ban", icon: QrCode },
+          { id: "ESCALATION", label: "Guarantor Escalation", icon: Users },
+          { id: "RULES", label: "Reminder Schedules", icon: Bell },
+          { id: "BACKUP", label: "Database Backups", icon: Database },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -342,7 +401,7 @@ export default function SettingsPage() {
             <button
               onClick={handleSaveBusiness}
               disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-500/20 disabled:opacity-50"
+              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-500/20 disabled:opacity-50 min-h-[40px]"
             >
               <Save className="w-3.5 h-3.5" />
               <span>Save Business Settings</span>
@@ -418,7 +477,7 @@ export default function SettingsPage() {
             <button
               onClick={handleSaveWhatsApp}
               disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-500/20 disabled:opacity-50"
+              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-500/20 disabled:opacity-50 min-h-[40px]"
             >
               <Save className="w-3.5 h-3.5" />
               <span>Save Anti-Ban Limits</span>
@@ -427,7 +486,159 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* TAB 3: Reminder Rules */}
+      {/* TAB 3: Guarantor Escalation */}
+      {activeTab === "ESCALATION" && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6 animate-in fade-in">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                Guarantor Recovery Escalation Policy
+              </h2>
+              <p className="text-xs text-slate-400">
+                Controlled multi-level WhatsApp notifications for customer guarantors when recovery criteria are met.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
+              <span>Enable Escalation</span>
+              <input
+                type="checkbox"
+                checked={escalationEnabled}
+                onChange={(e) => setEscalationEnabled(e.target.checked)}
+                className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+              />
+            </label>
+          </div>
+
+          {/* Level Thresholds */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                Level 1: Customer WA Fail / Delay (Days)
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={level1DelayDays}
+                onChange={(e) => setLevel1DelayDays(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold"
+              />
+              <span className="text-[10px] text-slate-400 block">First Notice to Guarantor</span>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                Level 2: Follow-up Overdue (Days)
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={level2OverdueDays}
+                onChange={(e) => setLevel2OverdueDays(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold"
+              />
+              <span className="text-[10px] text-slate-400 block">Overdue Follow-up Notice</span>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                Level 3: Final Notice Overdue (Days)
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={level3OverdueDays}
+                onChange={(e) => setLevel3OverdueDays(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold"
+              />
+              <span className="text-[10px] text-slate-400 block">Final Urgent Escalation</span>
+            </div>
+          </div>
+
+          {/* Limits & Safety */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                Max Messages Per Account
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={maxMessagesPerAccount}
+                onChange={(e) => setMaxMessagesPerAccount(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold"
+              />
+              <span className="text-[10px] text-slate-400 block">Lifetime cap on guarantor messages per contract</span>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                Max Messages Per Day (System-wide)
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={maxMessagesPerDay}
+                onChange={(e) => setMaxMessagesPerDay(Number(e.target.value))}
+                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold"
+              />
+              <span className="text-[10px] text-slate-400 block">Daily quota for guarantor escalation messages</span>
+            </div>
+          </div>
+
+          {/* Conditional Policy Toggles */}
+          <div className="space-y-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={onlyAfterCustomerFailure}
+                onChange={(e) => setOnlyAfterCustomerFailure(e.target.checked)}
+                className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+              />
+              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                Only escalate after customer WhatsApp message failure / unreachable
+              </span>
+            </label>
+
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={onlyAfterOverdue}
+                onChange={(e) => setOnlyAfterOverdue(e.target.checked)}
+                className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+              />
+              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                Only escalate after installment due date is overdue (balance &gt; 0)
+              </span>
+            </label>
+
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={requireManagerApproval}
+                onChange={(e) => setRequireManagerApproval(e.target.checked)}
+                className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+              />
+              <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                Require Manager Approval before sending guarantor escalations (Holds messages in pending queue)
+              </span>
+            </label>
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            <button
+              onClick={handleSaveEscalation}
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-500/20 disabled:opacity-50 min-h-[40px]"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Save Escalation Settings</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: Reminder Rules */}
       {activeTab === "RULES" && (
         <div className="space-y-6 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
@@ -444,7 +655,7 @@ export default function SettingsPage() {
               <button
                 disabled={runningScheduler}
                 onClick={handleRunScheduler}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 text-white text-xs font-bold shadow-sm disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 text-white text-xs font-bold shadow-sm disabled:opacity-50 min-h-[40px]"
               >
                 <Play className="w-3.5 h-3.5" />
                 <span>{runningScheduler ? "Evaluating Rules..." : "Test Run Scheduler Now"}</span>
@@ -456,8 +667,14 @@ export default function SettingsPage() {
                 <span className="font-bold text-emerald-600">Scheduler Evaluation Results:</span>
                 <div>Rules Evaluated: {schedulerOutput.rulesChecked}</div>
                 <div>Eligible Customers Found: {schedulerOutput.totalEligible}</div>
-                <div>Messages Enqueued: {schedulerOutput.enqueued}</div>
+                <div>Customer Messages Enqueued: {schedulerOutput.enqueued}</div>
                 <div>Duplicate Reminders Skipped: {schedulerOutput.duplicatesSkipped}</div>
+                {schedulerOutput.guarantorEnqueued !== undefined && (
+                  <div>Guarantor Messages Enqueued: {schedulerOutput.guarantorEnqueued}</div>
+                )}
+                {schedulerOutput.guarantorPendingApproval !== undefined && (
+                  <div>Guarantor Pending Approval: {schedulerOutput.guarantorPendingApproval}</div>
+                )}
               </div>
             )}
 
@@ -481,7 +698,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => toggleRuleActive(rule.id, rule.isActive)}
                       className={clsx(
-                        "px-3 py-1 rounded-full text-xs font-bold transition-all",
+                        "px-3 py-1 rounded-full text-xs font-bold transition-all min-h-[36px]",
                         rule.isActive
                           ? "bg-emerald-50 text-emerald-700 border border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300"
                           : "bg-slate-100 text-slate-500 border border-slate-300 dark:bg-slate-800"
@@ -497,7 +714,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* TAB 4: Database Backups & Restore */}
+      {/* TAB 5: Database Backups & Restore */}
       {activeTab === "BACKUP" && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6 animate-in fade-in">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
@@ -513,7 +730,7 @@ export default function SettingsPage() {
             <button
               disabled={creatingBackup}
               onClick={handleCreateBackup}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-500/20 disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-500/20 disabled:opacity-50 min-h-[40px]"
             >
               <Database className="w-3.5 h-3.5" />
               <span>{creatingBackup ? "Creating Snapshot..." : "Create Backup Snapshot"}</span>
@@ -549,7 +766,7 @@ export default function SettingsPage() {
 
                     <button
                       onClick={() => handleRestoreBackup(b.id, b.name)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 min-h-[36px]"
                     >
                       <RotateCcw className="w-3.5 h-3.5 text-amber-500" />
                       <span>Restore</span>
