@@ -130,7 +130,8 @@ export default function WhatsAppConnectionPage() {
   const isMounted = useRef(true);
 
   // ── Poll for status ─────────────────────────────────────────────────────────
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (currentStatusFallback?: WAStatus) => {
+    let nextStatus = currentStatusFallback || status;
     try {
       const res = await fetch(`/api/whatsapp/status?t=${Date.now()}`, {
         cache: "no-store",
@@ -141,6 +142,7 @@ export default function WhatsAppConnectionPage() {
       if (!isMounted.current) return;
       if (data?.status) {
         setStatus(data.status);
+        nextStatus = data.status;
         setQrCode(data.qrCode || null);
         setQrExpiresAt(data.qrExpiresAt || null);
         setPhone(data.phone || null);
@@ -148,20 +150,21 @@ export default function WhatsAppConnectionPage() {
         setConnectedAt(data.connectedAt || null);
         setErrorMsg(data.errorMessage || null);
       }
-    } catch {}
-  }, []);
-
-  const scheduleNextPoll = useCallback((currentStatus: WAStatus) => {
-    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
-    let interval = POLL_INTERVAL_DEFAULT;
-    if (currentStatus === "CONNECTED")  interval = POLL_INTERVAL_CONNECTED;
-    if (currentStatus === "QR_READY" || currentStatus === "INIT_QR" || currentStatus === "PAIRING" || currentStatus === "CONNECTING") {
-      interval = POLL_INTERVAL_QR;
+    } catch {} 
+    
+    // Always schedule the next poll
+    if (isMounted.current) {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      let interval = POLL_INTERVAL_DEFAULT;
+      if (nextStatus === "CONNECTED")  interval = POLL_INTERVAL_CONNECTED;
+      if (nextStatus === "QR_READY" || nextStatus === "INIT_QR" || nextStatus === "PAIRING" || nextStatus === "CONNECTING") {
+        interval = POLL_INTERVAL_QR;
+      }
+      pollTimerRef.current = setTimeout(() => {
+        fetchStatus(nextStatus);
+      }, interval);
     }
-    pollTimerRef.current = setTimeout(async () => {
-      await fetchStatus();
-    }, interval);
-  }, [fetchStatus]);
+  }, [status]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -171,10 +174,6 @@ export default function WhatsAppConnectionPage() {
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   }, []);
-
-  useEffect(() => {
-    scheduleNextPoll(status);
-  }, [status, scheduleNextPoll]);
 
   const showNotice = (type: "success" | "error", text: string) => {
     setNotice({ type, text });
