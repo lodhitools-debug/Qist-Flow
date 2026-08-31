@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+// Cache buster for Vercel deployment: v6
 import {
   QrCode,
   CheckCircle2,
