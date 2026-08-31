@@ -493,22 +493,17 @@ export default function WhatsAppConnectionPage() {
                       <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
                       <div>
                         <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                          Awaiting QR Code from Worker...
+                          Generating WhatsApp QR Code...
                         </p>
                         <p className="text-[11px] text-slate-400 mt-1">
-                          Agar QR code foran show na ho to background worker start karein.
+                          WhatsApp secure session initialize ho rahi hai. QR code foran show ho jaye ga.
                         </p>
-                      </div>
-
-                      <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-left text-xs font-mono text-slate-700 dark:text-slate-300">
-                        <span className="text-[10px] text-slate-400 uppercase font-sans font-bold block mb-1">Start Worker:</span>
-                        <code>npm run worker</code>
                       </div>
 
                       <button
                         type="button"
                         onClick={handleResetState}
-                        className="text-xs font-semibold text-rose-600 hover:underline"
+                        className="text-xs font-semibold text-rose-600 hover:underline block mx-auto"
                       >
                         Reset / Cancel
                       </button>

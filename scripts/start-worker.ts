@@ -1,5 +1,14 @@
 process.env.IS_WORKER = "true";
 
+// Crash-proof global exception handlers (Never let worker die from network/socket timeouts)
+process.on("uncaughtException", (err) => {
+  console.warn("⚠️ [Worker Handled UncaughtException]:", err.message);
+});
+
+process.on("unhandledRejection", (reason: any) => {
+  console.warn("⚠️ [Worker Handled UnhandledRejection]:", reason?.message || reason);
+});
+
 import http from "http";
 import { prisma } from "../src/lib/prisma";
 import { waWebProvider } from "../src/lib/whatsapp/web-provider";
@@ -50,8 +59,8 @@ async function startWorker() {
   console.log("🚀 QistFlow WhatsApp & Reminder Background Worker");
   console.log("==========================================");
 
-  // 1. Initialize WhatsApp connection
-  console.log("📱 Initializing WhatsApp Web Connection on AlwaysData...");
+  // 1. Initialize WhatsApp connection with clean retry
+  console.log("📱 Initializing WhatsApp Web Connection...");
   await waWebProvider.init().catch((err) => {
     console.warn("⚠️ Initial WhatsApp pairing awaiting QR scan or reconnect:", err.message);
   });
@@ -67,7 +76,6 @@ async function startWorker() {
       const res = await runReminderScheduler(true);
       if (res.enqueued > 0) {
         console.log(`[Reminder Scheduler] Enqueued ${res.enqueued} reminder(s) | Skipped ${res.duplicatesSkipped} duplicates`);
-        // Wake queue worker immediately
         runQueueStep();
       }
     } catch (err) {
@@ -119,12 +127,12 @@ async function startWorker() {
     } catch (err) {}
   }, 2000);
 
-  // 4. HTTP API Microservice for Vercel ↔ AlwaysData secure communication
+  // 4. HTTP API Microservice for Vercel ↔ Worker communication
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     const pathname = url.pathname;
 
-    // Health check endpoint (Public safe telemetry without secret leak)
+    // Health check endpoint
     if (pathname === "/health" || pathname === "/api/health") {
       let queueStats = { queued: 0, sending: 0, sentToday: 0, failedToday: 0 };
       let waInfo: { status: string; phone: string | null } = { status: "DISCONNECTED", phone: null };
@@ -138,127 +146,109 @@ async function startWorker() {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
-          status: "ok",
-          workerStatus: "running",
-          whatsAppConnectionState: waInfo.status,
-          connectedPhone: waInfo.phone,
-          queueStats,
-          lastHeartbeat: lastHeartbeat.toISOString(),
-          lastSuccessfulMessage: lastSuccessfulMessageAt ? lastSuccessfulMessageAt.toISOString() : null,
-          schedulerState: "active",
-          ruleEvaluationIntervalMinutes: 15,
+          status: "healthy",
+          worker: "qistflow-background-worker",
+          uptimeSeconds: Math.floor(process.uptime()),
           timestamp: new Date().toISOString(),
+          lastHeartbeat: lastHeartbeat.toISOString(),
+          lastSuccessfulMessageAt: lastSuccessfulMessageAt ? lastSuccessfulMessageAt.toISOString() : null,
+          whatsapp: waInfo,
+          queue: queueStats,
         })
       );
       return;
     }
 
-    // Security Check: Verify x-whatsapp-secret header if configured
-    if (SERVICE_SECRET) {
-      const incomingSecret = req.headers["x-whatsapp-secret"];
-      if (incomingSecret !== SERVICE_SECRET) {
-        res.writeHead(403, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Forbidden: Invalid WhatsApp service secret" }));
-        return;
-      }
+    // Secure webhook endpoints (Protected by secret token)
+    const clientSecret = req.headers["x-whatsapp-secret"];
+    if (SERVICE_SECRET && clientSecret !== SERVICE_SECRET) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: false, error: "Unauthorized" }));
+      return;
     }
 
-    try {
-      // Trigger Queue Wakeup Endpoint
-      if (req.method === "POST" && pathname === "/api/wa/trigger-queue") {
-        runQueueStep();
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ success: true, message: "Queue loop triggered" }));
-        return;
-      }
+    if (req.method === "POST" && pathname === "/api/wa/send") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const { phone, message } = JSON.parse(body || "{}");
+          if (!phone || !message) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: "phone and message required" }));
+            return;
+          }
 
-      if (req.method === "GET" && pathname === "/api/wa/status") {
-        const info = await waWebProvider.getConnectedInfo();
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(info));
-        return;
-      }
+          const sendResult = await waWebProvider.sendDirectMessage(phone, message);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(sendResult));
+        } catch (err: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: err.message }));
+        }
+      });
+      return;
+    }
 
-      if (req.method === "POST" && pathname === "/api/wa/connect") {
-        await waWebProvider.init();
-        const info = await waWebProvider.getConnectedInfo();
+    if (req.method === "POST" && pathname === "/api/wa/connect") {
+      try {
+        await waWebProvider.forceReconnect(true);
+        const qr = await waWebProvider.getQRCode();
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(info));
-        return;
+        res.end(JSON.stringify({ success: true, status: "CONNECTING", qrCode: qr }));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: err.message }));
       }
+      return;
+    }
 
-      if (req.method === "POST" && pathname === "/api/wa/disconnect") {
+    if (req.method === "POST" && pathname === "/api/wa/pairing-code") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const { phone } = JSON.parse(body || "{}");
+          const code = await waWebProvider.requestPairingCode(phone);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: true, pairingCode: code }));
+        } catch (err: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: err.message }));
+        }
+      });
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/wa/disconnect") {
+      try {
         await waWebProvider.disconnect();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ success: true, message: "Disconnected" }));
-        return;
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: err.message }));
       }
+      return;
+    }
 
-      if (req.method === "POST" && pathname === "/api/wa/pairing-code") {
-        let body = "";
-        req.on("data", (chunk) => (body += chunk));
-        req.on("end", async () => {
-          try {
-            const payload = JSON.parse(body || "{}");
-            const code = await waWebProvider.requestPairingCode(payload.phone || "");
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ success: true, pairingCode: code }));
-          } catch (err: any) {
-            res.writeHead(500, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ success: false, error: err.message }));
-          }
-        });
-        return;
-      }
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Endpoint not found" }));
+  });
 
-      if (req.method === "POST" && pathname === "/api/wa/send") {
-        let body = "";
-        req.on("data", (chunk) => (body += chunk));
-        req.on("end", async () => {
-          try {
-            const payload = JSON.parse(body || "{}");
-            const result = await waWebProvider.sendMessage(payload);
-            if (result.success) {
-              lastSuccessfulMessageAt = new Date();
-            }
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(result));
-          } catch (err: any) {
-            res.writeHead(500, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ success: false, error: err.message }));
-          }
-        });
-        return;
-      }
-
-      res.writeHead(404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Route not found" }));
-    } catch (err: any) {
-      console.error("[HTTP Worker Exception]:", err);
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err.message }));
+  server.on("error", (err: any) => {
+    if (err.code === "EADDRINUSE") {
+      console.warn(`⚠️ HTTP port ${HTTP_PORT} is already in use by another instance. WhatsApp background worker is continuing without standalone HTTP port.`);
+    } else {
+      console.error("HTTP Server Error:", err);
     }
   });
 
-  // Graceful Shutdown
-  const gracefulShutdown = () => {
-    console.log("\n🛑 Graceful worker shutdown initiated...");
-    server.close(() => {
-      console.log("HTTP microservice closed.");
-      process.exit(0);
-    });
-    setTimeout(() => process.exit(0), 4000);
-  };
-
-  process.on("SIGINT", gracefulShutdown);
-  process.on("SIGTERM", gracefulShutdown);
-
   server.listen(HTTP_PORT, () => {
-    console.log(`📡 WhatsApp HTTP Microservice listening on port ${HTTP_PORT}`);
+    console.log(`🌐 Worker HTTP microservice listening on port ${HTTP_PORT}`);
   });
 }
 
 startWorker().catch((err) => {
-  console.error("❌ Fatal Background Worker Crash:", err);
-  process.exit(1);
+  console.error("❌ Fatal error in startWorker:", err);
 });
