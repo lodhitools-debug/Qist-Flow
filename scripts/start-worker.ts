@@ -119,7 +119,7 @@ async function startWorker() {
         if (now - lastConnectInit > 5000) {
           lastConnectInit = now;
           console.log(`🔄 [Worker] Connect requested from web. Initializing fresh QR code streaming...`);
-          await waWebProvider.forceReconnect(true).catch((err) => {
+          await waWebProvider.forceReconnect(false).catch((err) => {
             console.error("❌ [Worker] QR reconnect error:", err.message);
           });
         }

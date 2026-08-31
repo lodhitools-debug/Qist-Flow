@@ -128,6 +128,7 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
             const rawId = this.sock.user.id;
             this.connectedPhone = rawId ? rawId.split(":")[0].replace(/[^0-9]/g, "") : null;
             this.connectedName = this.sock.user.name || "QistFlow WhatsApp";
+            console.log(`\n🎉🎉🎉 [Baileys] WhatsApp Connected Successfully as: ${this.connectedName} (${this.connectedPhone})\n`);
           }
 
           await this.updateDbSession();
@@ -137,6 +138,7 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
       this.isConnecting = false;
       this.connectionState = "FAILED";
       this.errorMessage = err.message || "Failed to initialize WhatsApp socket";
+      console.error("❌ [Baileys Init Error]:", err.message);
       await this.updateDbSession();
     }
   }
@@ -321,12 +323,14 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
 
   private async updateDbSession(): Promise<void> {
     try {
+      const isConn = this.connectionState === "CONNECTED";
       await prisma.whatsAppSession.upsert({
         where: { id: "default" },
         create: {
           id: "default",
           status: this.connectionState as any,
-          qrCode: this.qrCodeDataUrl,
+          qrCode: isConn ? null : this.qrCodeDataUrl,
+          pairingCode: isConn ? null : undefined,
           connectedPhone: this.connectedPhone,
           connectedName: this.connectedName,
           connectedAt: this.connectedAt,
@@ -335,7 +339,8 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
         },
         update: {
           status: this.connectionState as any,
-          qrCode: this.qrCodeDataUrl,
+          qrCode: isConn ? null : this.qrCodeDataUrl,
+          pairingCode: isConn ? null : undefined,
           connectedPhone: this.connectedPhone,
           connectedName: this.connectedName,
           connectedAt: this.connectedAt,
@@ -343,8 +348,9 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
           errorMessage: this.errorMessage,
         },
       });
-    } catch (e) {
-      // ignore DB sync errors during early initialization
+      console.log(`📡 [DB Sync] WhatsApp session: status=${this.connectionState}, phone=${this.connectedPhone || "none"}`);
+    } catch (e: any) {
+      console.warn("⚠️ [DB Sync Warning]:", e.message);
     }
   }
 }
