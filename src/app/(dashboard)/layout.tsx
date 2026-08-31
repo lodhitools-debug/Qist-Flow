@@ -6,6 +6,7 @@ import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import PwaInstallPrompt from "@/components/layout/PwaInstallPrompt";
+import { getClientSession } from "@/lib/client-auth";
 
 export default function DashboardLayout({
   children,
@@ -17,14 +18,7 @@ export default function DashboardLayout({
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => {
-        if (!res.ok) {
-          window.location.href = "/login";
-          return null;
-        }
-        return res.json();
-      })
+    getClientSession()
       .then((data) => {
         if (!data || !data.authenticated) {
           window.location.href = "/login";

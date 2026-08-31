@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, Suspense } from "react";
 import clsx from "clsx";
+import { getClientSession } from "@/lib/client-auth";
 
 interface NavItem {
   title: string;
@@ -54,8 +55,7 @@ function SidebarContent({ isOpen, onClose }: SidebarProps) {
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => (res.ok ? res.json() : null))
+    getClientSession()
       .then((data) => {
         if (data?.user) setCurrentUser(data.user);
       })

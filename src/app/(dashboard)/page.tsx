@@ -24,16 +24,27 @@ import {
 import clsx from "clsx";
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<any>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = sessionStorage.getItem("qistflow_dashboard_stats");
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return null;
+  });
+  const [loading, setLoading] = useState(false);
 
-  const fetchStats = async () => {
+  const fetchStats = async (isBackground = false) => {
     try {
-      setLoading(true);
+      if (!isBackground && !stats) setLoading(true);
       const res = await fetch("/api/dashboard/stats");
       if (res.ok) {
         const data = await res.json();
         setStats(data);
+        try {
+          sessionStorage.setItem("qistflow_dashboard_stats", JSON.stringify(data));
+        } catch {}
       }
     } catch (err) {
       console.error("Failed to load dashboard stats", err);
@@ -43,7 +54,7 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    fetchStats();
+    fetchStats(!!stats);
   }, []);
 
   const formatPKR = (num: number = 0) => {
@@ -93,7 +104,7 @@ export default function DashboardPage() {
           </Link>
 
           <button
-            onClick={fetchStats}
+            onClick={() => fetchStats()}
             title="Refresh statistics"
             className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors min-h-[44px]"
           >

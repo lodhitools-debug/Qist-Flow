@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { getClientSession } from "@/lib/client-auth";
 
 interface HeaderProps {
   onToggleMobileMenu?: () => void;
@@ -39,9 +40,8 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
 
   const fetchSession = async () => {
     try {
-      const res = await fetch("/api/auth/me");
-      if (res.ok) {
-        const data = await res.json();
+      const data = await getClientSession();
+      if (data?.user) {
         setUser(data.user);
       }
     } catch {}
