@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "qistflow-web",
-      script: "npm",
+      script: "node_modules/.bin/next",
       args: "start",
       env: {
         NODE_ENV: "production",
@@ -11,10 +11,14 @@ module.exports = {
     },
     {
       name: "qistflow-worker",
-      script: "npx",
-      args: "tsx scripts/start-worker.ts",
+      script: "scripts/worker-launcher.js",
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 3000,
       env: {
         NODE_ENV: "production",
+        IS_WORKER: "true",
       },
     },
   ],
