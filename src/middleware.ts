@@ -3,11 +3,11 @@ import { NextResponse, type NextRequest } from "next/server";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Public paths that do not require authentication
+  // Public paths and API routes (APIs handle their own auth via requireAuth)
   if (
     pathname.startsWith("/login") ||
     pathname.startsWith("/change-password") ||
-    pathname.startsWith("/api/auth/") ||
+    pathname.startsWith("/api/") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/icons/") ||
     pathname === "/manifest.webmanifest" ||

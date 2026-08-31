@@ -1,4 +1,4 @@
-const CACHE_NAME = "qistflow-shell-v3";
+const CACHE_NAME = "qistflow-shell-v4";
 const STATIC_ASSETS = [
   "/manifest.webmanifest",
   "/icons/icon-192.svg",
