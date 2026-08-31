@@ -75,10 +75,13 @@ async function startWorker() {
     }
   }, 1000 * 60 * 15);
 
-  // 3b. Database Pairing Watcher (Polls every 2 seconds for pairing requests from Vercel)
+  // 3b. Database Pairing & QR Watcher (Polls every 2 seconds for requests from Vercel)
+  let lastConnectInit = 0;
   setInterval(async () => {
     try {
       const session = await prisma.whatsAppSession.findUnique({ where: { id: "default" } });
+
+      // 1. Handle Pairing Code Request from Vercel
       if (session?.status === "PAIRING_REQUESTED" && session.requestedPhone) {
         console.log(`📲 [Worker] Pairing code requested for ${session.requestedPhone}...`);
         try {
@@ -100,6 +103,18 @@ async function startWorker() {
               status: "DISCONNECTED",
               errorMessage: err.message,
             },
+          });
+        }
+      }
+
+      // 2. Handle QR Connect Request from Vercel
+      if (session?.status === "CONNECTING" && !session.qrCode && !waWebProvider.isConnected()) {
+        const now = Date.now();
+        if (now - lastConnectInit > 8000) {
+          lastConnectInit = now;
+          console.log(`🔄 [Worker] Connect requested from web. Initializing QR code streaming...`);
+          await waWebProvider.forceReconnect().catch((err) => {
+            console.error("❌ [Worker] QR reconnect error:", err.message);
           });
         }
       }

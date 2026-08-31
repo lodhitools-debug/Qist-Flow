@@ -65,7 +65,7 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
         logger,
         printQRInTerminal: false,
         auth: state,
-        browser: Browsers.macOS("Desktop"),
+        browser: Browsers.ubuntu("Chrome"),
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 25000,
@@ -203,6 +203,26 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
     } catch (e) {}
 
     await this.updateDbSession();
+  }
+
+  isConnected(): boolean {
+    return this.connectionState === "CONNECTED" && !!this.sock;
+  }
+
+  async forceReconnect(): Promise<void> {
+    try {
+      if (this.sock) {
+        this.sock.ev.removeAllListeners("connection.update");
+        this.sock.ev.removeAllListeners("creds.update");
+        this.sock.end(undefined);
+        this.sock = null;
+      }
+      this.isConnecting = false;
+      this.qrCodeString = null;
+      this.qrCodeDataUrl = null;
+      this.connectionState = "CONNECTING";
+    } catch {}
+    await this.init();
   }
 
   async reconnect(): Promise<void> {
