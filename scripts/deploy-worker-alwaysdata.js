@@ -122,18 +122,19 @@ echo "Worker stopped."
         console.log('Upload complete! Extracting & restarting on AlwaysData...');
 
         const remoteCommands = [
-          'pkill -f "dist/worker.bundle.js" || true',
+          'pkill -9 -f "worker.bundle.js" || true',
           'mkdir -p /home/qistflow27/qistflow-worker',
-          'tar -xzf /home/qistflow27/deploy.tar.gz -C /home/qistflow27/qistflow-worker',
+          'rm -rf /home/qistflow27/qistflow-worker/dist',
+          'tar -xzf /home/qistflow27/deploy.tar.gz -C /home/qistflow27/qistflow-worker --overwrite',
           'chmod +x /home/qistflow27/qistflow-worker/start.sh',
           'chmod +x /home/qistflow27/qistflow-worker/stop.sh',
           'rm -f /home/qistflow27/deploy.tar.gz',
           '/home/qistflow27/qistflow-worker/start.sh',
-          'sleep 3',
-          'ps aux | grep worker.bundle.js',
+          'sleep 2',
+          'ps aux | grep node',
           'echo "--- WORKER LOG ---"',
           'tail -n 25 /home/qistflow27/qistflow-worker/worker.log'
-        ].join(' && ');
+        ].join('; ');
 
         conn.exec(remoteCommands, (err, stream) => {
           if (err) throw err;
