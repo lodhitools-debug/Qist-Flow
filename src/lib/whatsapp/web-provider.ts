@@ -72,6 +72,7 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
         syncFullHistory: false,
         generateHighQualityLinkPreview: false,
       });
+      this.isConnecting = false;
 
       this.sock.ev.on("creds.update", saveCreds);
 
@@ -243,18 +244,25 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
     }
 
     if (!this.sock) {
+      this.isConnecting = false;
       await this.init();
     }
 
-    if (!this.sock) {
-      throw new Error("WhatsApp socket could not be initialized");
+    for (let i = 0; i < 30 && !this.sock; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
 
-    // Wait a brief moment if socket is starting up
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    if (!this.sock) {
+      throw new Error("WhatsApp socket initialization timed out. Please try again.");
+    }
+
+    // Wait a brief moment for socket handshaking
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     try {
-      const code = await this.sock.requestPairingCode(cleanPhone);
+      const rawCode = await this.sock.requestPairingCode(cleanPhone);
+      const code = rawCode?.match(/.{1,4}/g)?.join("-") || rawCode;
+      this.pairingCode = code;
       return code;
     } catch (err: any) {
       throw new Error(err.message || "Failed to request pairing code from WhatsApp");
