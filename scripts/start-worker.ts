@@ -5,7 +5,10 @@ import { waWebProvider } from "../src/lib/whatsapp/web-provider";
 import { processQueueWorker, getQueueStats } from "../src/lib/whatsapp/message-queue";
 import { runReminderScheduler } from "../src/lib/scheduler/reminder-cron";
 
-const HTTP_PORT = parseInt(process.env.WORKER_HTTP_PORT || process.env.PORT || "8080", 10);
+const HTTP_PORT = parseInt(
+  process.env.WORKER_HTTP_PORT || (process.env.PORT && process.env.PORT !== "3000" ? process.env.PORT : "8080"),
+  10
+);
 const SERVICE_SECRET = process.env.WHATSAPP_SERVICE_SECRET || "";
 
 let isQueueLoopRunning = false;

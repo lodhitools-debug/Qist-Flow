@@ -79,11 +79,13 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-          console.log("📲 [Baileys] Real pairing QR code received! Converting to Data URL...");
+          console.log("\n📲 [Baileys] WhatsApp Pairing QR Code Generated!");
           this.qrCodeString = qr;
           try {
             this.qrCodeDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 7 });
-            console.log("✅ [Baileys] QR Data URL generated successfully!");
+            const terminalQR = await QRCode.toString(qr, { type: "terminal", small: true });
+            console.log(terminalQR);
+            console.log("👉 Scan this QR code in WhatsApp or open https://qistflow.vercel.app/whatsapp/connection\n");
           } catch (e) {
             console.error("❌ [Baileys] Failed to convert QR to DataURL:", e);
             this.qrCodeDataUrl = null;
