@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -22,8 +22,12 @@ import {
   User,
   Shield,
   X,
+  Building,
+  ShieldAlert,
+  CalendarClock,
+  Database,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import clsx from "clsx";
 
 interface NavItem {
@@ -40,11 +44,13 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
-export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+function SidebarContent({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [waExpanded, setWaExpanded] = useState(true);
   const [importsExpanded, setImportsExpanded] = useState(true);
   const [recoveryExpanded, setRecoveryExpanded] = useState(true);
+  const [settingsExpanded, setSettingsExpanded] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
@@ -59,7 +65,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Close mobile drawer on navigation
   useEffect(() => {
     if (onClose) onClose();
-  }, [pathname]);
+  }, [pathname, searchParams]);
 
   const userRole = currentUser?.role || "ADMIN";
 
@@ -138,9 +144,15 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     },
     {
       title: "Settings",
-      href: "/settings",
       icon: Settings,
       allowedRoles: ["ADMIN"],
+      children: [
+        { title: "Business Profile", href: "/settings?tab=BUSINESS" },
+        { title: "WhatsApp Anti-Ban", href: "/settings?tab=WHATSAPP" },
+        { title: "Guarantor Escalation", href: "/settings?tab=ESCALATION" },
+        { title: "Reminder Schedules", href: "/settings?tab=RULES" },
+        { title: "Database Backups", href: "/settings?tab=BACKUP" },
+      ],
     },
     {
       title: "My Profile",
@@ -208,9 +220,20 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             } else if (item.title === "Recovery") {
               isExpanded = recoveryExpanded;
               toggleExpanded = () => setRecoveryExpanded(!recoveryExpanded);
+            } else if (item.title === "Settings") {
+              isExpanded = settingsExpanded;
+              toggleExpanded = () => setSettingsExpanded(!settingsExpanded);
             }
 
-            const hasActiveChild = item.children.some((c) => pathname === c.href);
+            const currentTab = searchParams?.get("tab") || "BUSINESS";
+            const hasActiveChild = item.children.some((c) => {
+              if (c.href.includes("?")) {
+                const [cPath, cQuery] = c.href.split("?");
+                const cTab = new URLSearchParams(cQuery).get("tab");
+                return pathname === cPath && cTab === currentTab;
+              }
+              return pathname === c.href;
+            });
 
             return (
               <div key={item.title} className="space-y-1">
@@ -235,7 +258,15 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 {isExpanded && (
                   <div className="pl-9 pr-2 space-y-1 animate-in fade-in duration-150">
                     {item.children.map((child) => {
-                      const isChildActive = pathname === child.href;
+                      let isChildActive = false;
+                      if (child.href.includes("?")) {
+                        const [cPath, cQuery] = child.href.split("?");
+                        const cTab = new URLSearchParams(cQuery).get("tab");
+                        isChildActive = pathname === cPath && cTab === currentTab;
+                      } else {
+                        isChildActive = pathname === child.href;
+                      }
+
                       return (
                         <Link
                           key={child.href}
@@ -338,5 +369,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         </div>
       )}
     </>
+  );
+}
+
+export default function Sidebar(props: SidebarProps) {
+  return (
+    <Suspense fallback={<aside className="hidden md:flex w-64 flex-col flex-shrink-0 h-screen bg-slate-900" />}>
+      <SidebarContent {...props} />
+    </Suspense>
   );
 }

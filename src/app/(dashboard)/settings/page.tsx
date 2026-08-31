@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Settings,
   Building,
@@ -19,8 +20,17 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 
-export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<"BUSINESS" | "WHATSAPP" | "ESCALATION" | "RULES" | "BACKUP">("BUSINESS");
+function SettingsContent() {
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab")?.toUpperCase();
+  const activeTab: "BUSINESS" | "WHATSAPP" | "ESCALATION" | "RULES" | "BACKUP" =
+    tabParam === "WHATSAPP" ||
+    tabParam === "ESCALATION" ||
+    tabParam === "RULES" ||
+    tabParam === "BACKUP"
+      ? (tabParam as any)
+      : "BUSINESS";
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -302,36 +312,16 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-1 overflow-x-auto">
-        {[
-          { id: "BUSINESS", label: "Business Profile", icon: Building },
-          { id: "WHATSAPP", label: "WhatsApp Anti-Ban", icon: QrCode },
-          { id: "ESCALATION", label: "Guarantor Escalation", icon: Users },
-          { id: "RULES", label: "Reminder Schedules", icon: Bell },
-          { id: "BACKUP", label: "Database Backups", icon: Database },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id as any);
-                setNotice(null);
-              }}
-              className={clsx(
-                "flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all border-b-2 whitespace-nowrap",
-                isActive
-                  ? "border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-white dark:bg-slate-900"
-                  : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-              )}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
+      {/* Module Title Indicator */}
+      <div className="flex items-center gap-2.5 px-1 py-1">
+        <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Section:</span>
+        <span className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+          {activeTab === "BUSINESS" && "Business Profile"}
+          {activeTab === "WHATSAPP" && "WhatsApp Anti-Ban & Throttling"}
+          {activeTab === "ESCALATION" && "Guarantor Recovery Escalation"}
+          {activeTab === "RULES" && "Reminder Schedules & Timings"}
+          {activeTab === "BACKUP" && "Database Snapshots & Backups"}
+        </span>
       </div>
 
       {/* TAB 1: Business Profile */}
@@ -779,5 +769,20 @@ export default function SettingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-12 text-center text-xs text-slate-400">
+          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <span>Loading settings...</span>
+        </div>
+      }
+    >
+      <SettingsContent />
+    </Suspense>
   );
 }
