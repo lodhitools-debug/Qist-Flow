@@ -50,3 +50,5 @@ next-env.d.ts
 /dist/
 *.tar.gz
 
+
+.vercel

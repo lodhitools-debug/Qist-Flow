@@ -7,6 +7,20 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("🌱 Starting QistFlow Production Database Seed...");
 
+  // 0. Create default Tenant (required for multi-tenant schema)
+  console.log("🏢 Creating default tenant...");
+  const defaultTenant = await prisma.tenant.upsert({
+    where: { slug: "default" },
+    update: {},
+    create: {
+      id: "default",
+      slug: "default",
+      name: "Default Company",
+      isActive: true,
+    },
+  });
+  console.log(`✅ Default tenant ready: ${defaultTenant.id}`);
+
   // 1. Templates & Settings Seeding (No hardcoded users - Admin logs in via Google or creates account on initial launch)
   console.log("ℹ️ No hardcoded demo users. Admin can sign in with Google or create credentials on initial launch.");
 
@@ -14,13 +28,14 @@ async function main() {
   const templateMap: Record<string, string> = {};
   for (const t of DEFAULT_TEMPLATES) {
     const tmpl = await prisma.messageTemplate.upsert({
-      where: { slug: t.slug },
+      where: { slug_tenantId: { slug: t.slug, tenantId: "default" } },
       update: {
         body: t.body,
         name: t.name,
       },
       create: {
         slug: t.slug,
+        tenantId: "default",
         name: t.name,
         type: t.type,
         language: t.language,
@@ -92,7 +107,7 @@ async function main() {
     const templateId = templateMap[r.templateSlug];
     if (templateId) {
       const existing = await prisma.reminderRule.findFirst({
-        where: { name: r.name },
+        where: { name: r.name, tenantId: "default" },
       });
 
       if (!existing) {
@@ -104,6 +119,7 @@ async function main() {
             timeWindowStart: r.timeWindowStart,
             timeWindowEnd: r.timeWindowEnd,
             templateId,
+            tenantId: "default",
             maxReminders: r.maxReminders,
             minGapDays: r.minGapDays,
             isActive: true,
@@ -117,10 +133,11 @@ async function main() {
 
   // 4. Initial System Settings
   await prisma.systemSetting.upsert({
-    where: { key: "business_profile" },
+    where: { key_tenantId: { key: "business_profile", tenantId: "default" } },
     update: {},
     create: {
       key: "business_profile",
+      tenantId: "default",
       value: JSON.stringify({
         companyName: "QistFlow Recovery (QistBazar)",
         tagline: "Smart Recovery & WhatsApp Reminder System",
@@ -133,10 +150,11 @@ async function main() {
   });
 
   await prisma.systemSetting.upsert({
-    where: { key: "whatsapp_config" },
+    where: { key_tenantId: { key: "whatsapp_config", tenantId: "default" } },
     update: {},
     create: {
       key: "whatsapp_config",
+      tenantId: "default",
       value: JSON.stringify({
         provider: "WEB",
         minDelayMs: 6000,
@@ -150,10 +168,11 @@ async function main() {
   });
 
   await prisma.systemSetting.upsert({
-    where: { key: "guarantor_escalation_config" },
+    where: { key_tenantId: { key: "guarantor_escalation_config", tenantId: "default" } },
     update: {},
     create: {
       key: "guarantor_escalation_config",
+      tenantId: "default",
       value: JSON.stringify({
         enabled: true,
         level1DelayDays: 1,

@@ -10,6 +10,7 @@ const JWT_SECRET = new TextEncoder().encode(
 
 export interface TokenPayload {
   userId: string;
+  tenantId: string;   // Multi-tenant: which company this user belongs to
   name: string;
   email: string;
   role: "ADMIN" | "MANAGER" | "RECOVERY_OFFICER";

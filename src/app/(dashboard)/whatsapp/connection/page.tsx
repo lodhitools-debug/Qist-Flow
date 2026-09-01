@@ -132,23 +132,27 @@ export default function WhatsAppConnectionPage() {
   const [showChangeModal, setShowChangeModal] = useState(false);
 
   const qrSeconds = useQrCountdown(qrExpiresAt);
-  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const statusRef = useRef<WAStatus>("NOT_CONNECTED");
   const isMounted = useRef(true);
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync state to ref
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   // ── Poll for status ─────────────────────────────────────────────────────────
-  const fetchStatus = useCallback(async (currentStatusFallback?: WAStatus) => {
-    let nextStatus = currentStatusFallback || status;
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch(`/api/whatsapp/status?t=${Date.now()}`, {
         cache: "no-store",
-        headers: { Pragma: "no-cache" },
+        headers: { "Content-Type": "application/json" }
       });
       if (!res.ok) return;
       const data = await res.json();
       if (!isMounted.current) return;
       if (data?.status) {
         setStatus(data.status);
-        nextStatus = data.status;
         setQrCode(data.qrCode || null);
         setQrExpiresAt(data.qrExpiresAt || null);
         setPhone(data.phone || null);
@@ -158,7 +162,7 @@ export default function WhatsAppConnectionPage() {
         setErrorMsg(data.errorMessage || null);
         
         // Notify Header to update immediately
-        if (data.status !== status) {
+        if (data.status !== statusRef.current) {
           window.dispatchEvent(new Event("wa_status_changed"));
         }
       }
@@ -168,15 +172,16 @@ export default function WhatsAppConnectionPage() {
     if (isMounted.current) {
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
       let interval = POLL_INTERVAL_DEFAULT;
-      if (nextStatus === "CONNECTED")  interval = POLL_INTERVAL_CONNECTED;
-      if (nextStatus === "QR_READY" || nextStatus === "INIT_QR" || nextStatus === "PAIRING" || nextStatus === "CONNECTING") {
+      const current = statusRef.current;
+      if (current === "CONNECTED")  interval = POLL_INTERVAL_CONNECTED;
+      if (current === "QR_READY" || current === "INIT_QR" || current === "PAIRING" || current === "CONNECTING") {
         interval = POLL_INTERVAL_QR;
       }
       pollTimerRef.current = setTimeout(() => {
-        fetchStatus(nextStatus);
+        fetchStatus();
       }, interval);
     }
-  }, [status]);
+  }, []);
 
   useEffect(() => {
     isMounted.current = true;

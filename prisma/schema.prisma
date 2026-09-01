@@ -9,6 +9,31 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ── Multi-Tenant: Each company is a Tenant ───────────────────────────────────
+model Tenant {
+  id                  String               @id @default(cuid())
+  name                String               // "Lodhi Tools", "Qist Flow"
+  slug                String               @unique // "lodhi-tools", "qist-flow-27"
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  // Relations
+  users               User[]
+  customers           Customer[]
+  whatsAppSessions    WhatsAppSession[]
+  messageQueues       MessageQueue[]
+  messageLogs         MessageLog[]
+  activityLogs        ActivityLog[]
+  excelImports        ExcelImport[]
+  backups             BackupSnapshot[]
+  messageTemplates    MessageTemplate[]
+  reminderRules       ReminderRule[]
+  systemSettings      SystemSetting[]
+
+  @@index([slug])
+}
+
 model User {
   id                  String               @id @default(cuid())
   name                String
@@ -25,6 +50,10 @@ model User {
   lastPasswordChangeAt DateTime?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+
+  // Multi-Tenant
+  tenantId            String               @default("default")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   // Manager hierarchy (Officer -> Manager)
   managerId           String?
@@ -50,11 +79,17 @@ model User {
   @@index([role])
   @@index([managerId])
   @@index([isActive])
+  @@index([tenantId])
 }
 
 model Customer {
   id                  String               @id @default(cuid())
-  account             String               @unique // QistBazar Account number (indexed)
+
+  // Multi-Tenant
+  tenantId            String               @default("default")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  account             String               // QistBazar Account number (unique per tenant)
   customerName        String
   primaryPhone        String               // Cleaned +92 or 03 format
   secondaryPhone      String?
@@ -101,6 +136,7 @@ model Customer {
   messageQueues       MessageQueue[]
   messageLogs         MessageLog[]
 
+  @@unique([account, tenantId])           // Account unique per tenant
   @@index([customerName])
   @@index([primaryPhone])
   @@index([cnic])
@@ -109,6 +145,7 @@ model Customer {
   @@index([branch])
   @@index([assignedToUserId])
   @@index([assignedManagerId])
+  @@index([tenantId])
 }
 
 model CustomerAssignment {
@@ -207,6 +244,11 @@ model ExcelImport {
   columnMapping       String?              // JSON representation of column mappings
   errorsJson          String?              // JSON array of detailed validation errors
   snapshotJson        String?              // JSON snapshot for rollback safety
+
+  // Multi-Tenant
+  tenantId            String               @default("default")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   userId              String?
   user                User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   createdAt           DateTime             @default(now())
@@ -214,6 +256,7 @@ model ExcelImport {
   importRows          ExcelImportRow[]
 
   @@index([createdAt])
+  @@index([tenantId])
 }
 
 model ExcelImportRow {
@@ -235,17 +278,25 @@ model ExcelImportRow {
 model MessageTemplate {
   id                  String               @id @default(cuid())
   name                String
-  slug                String               @unique
+  slug                String               // Unique per tenant
   type                String               @default("DUE_TODAY") // BEFORE_DUE, DUE_TODAY, OVERDUE, PAYMENT_RECEIVED, CUSTOM
   language            String               @default("ROMAN_URDU") // ROMAN_URDU, URDU, ENGLISH
   body                String
   variables           String?              // Comma-separated variable names
   isActive            Boolean              @default(true)
+
+  // Multi-Tenant
+  tenantId            String               @default("default")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
   reminderRules       ReminderRule[]
   messageQueues       MessageQueue[]
+
+  @@unique([slug, tenantId])              // Slug unique per tenant
+  @@index([tenantId])
 }
 
 model ReminderRule {
@@ -260,14 +311,26 @@ model ReminderRule {
   maxReminders        Int                  @default(1)
   minGapDays          Int                  @default(1)
   isActive            Boolean              @default(true)
+
+  // Multi-Tenant
+  tenantId            String               @default("default")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+
+  @@index([tenantId])
 }
 
 model WhatsAppSession {
   id                  String               @id @default(cuid())
-  userId              String?              @unique // Isolated session per user, or null for legacy default
+  userId              String?              @unique // Isolated session per user
   user                User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Multi-Tenant
+  tenantId            String               @default("default")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   status              String               @default("NOT_CONNECTED") // NOT_CONNECTED, CONNECTING, QR_READY, PAIRING, CONNECTED, DISCONNECTED, RECONNECTING, LOGGED_OUT, ERROR
   qrCode              String?              @db.Text
   qrExpiresAt         DateTime?
@@ -285,6 +348,7 @@ model WhatsAppSession {
 
   @@index([status])
   @@index([userId])
+  @@index([tenantId])
 }
 
 model MessageQueue {
@@ -302,6 +366,10 @@ model MessageQueue {
   templateId          String?
   template            MessageTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
   
+  // Multi-Tenant
+  tenantId            String               @default("default")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   messageType         String               @default("REMINDER") // REMINDER, MANUAL, PAYMENT_CONFIRMATION, GUARANTOR_FIRST_NOTICE, GUARANTOR_FOLLOWUP, GUARANTOR_FINAL_NOTICE
   escalationLevel     Int                  @default(0) // 0 = Customer, 1 = WhatsApp fail, 2 = Overdue, 3 = Final
   approvalStatus      String               @default("NOT_REQUIRED") // NOT_REQUIRED, PENDING_APPROVAL, APPROVED, REJECTED
@@ -330,6 +398,7 @@ model MessageQueue {
   @@index([recipientPhone])
   @@index([customerId])
   @@index([senderUserId])
+  @@index([tenantId])
 }
 
 model MessageLog {
@@ -343,6 +412,11 @@ model MessageLog {
   senderPhone         String?
   customerId          String?
   customer            Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  // Multi-Tenant
+  tenantId            String               @default("default")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   messageText         String
   messageType         String               @default("REMINDER")
   status              String               @default("SENT") // SENT, DELIVERED, READ, FAILED, UNKNOWN
@@ -355,6 +429,7 @@ model MessageLog {
   @@index([customerId])
   @@index([sentAt])
   @@index([status])
+  @@index([tenantId])
 }
 
 model ActivityLog {
@@ -366,19 +441,32 @@ model ActivityLog {
   entityId            String?
   details             String?              // JSON string
   ipAddress           String?
+
+  // Multi-Tenant
+  tenantId            String               @default("default")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   createdAt           DateTime             @default(now())
 
   @@index([userId])
   @@index([action])
   @@index([createdAt])
+  @@index([tenantId])
 }
 
 model SystemSetting {
   id                  String               @id @default(cuid())
-  key                 String               @unique
+  key                 String
+
+  // Multi-Tenant
+  tenantId            String               @default("default")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   value               String               // JSON string
   description         String?
   updatedAt           DateTime             @updatedAt
+
+  @@unique([key, tenantId])               // Key unique per tenant
 }
 
 model BackupSnapshot {
@@ -387,11 +475,15 @@ model BackupSnapshot {
   type                String               @default("MANUAL") // AUTO_PRE_IMPORT, MANUAL, SCHEDULED
   recordCounts        String?              // JSON counts
   dataJson            String?              // JSON snapshot data or path
+
+  // Multi-Tenant
+  tenantId            String               @default("default")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   userId              String?
   user                User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   createdAt           DateTime             @default(now())
 
   @@index([createdAt])
+  @@index([tenantId])
 }
-
-

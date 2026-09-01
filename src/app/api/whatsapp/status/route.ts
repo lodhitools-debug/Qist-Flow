@@ -19,15 +19,16 @@ export async function GET(req: NextRequest) {
       where: { userId },
     }).catch(() => null);
 
-    // Queue stats scoped to this user
+    // Queue stats scoped to this user AND tenant
     let queueStats = { queued: 0, sending: 0, sentToday: 0, failedToday: 0 };
+    const tenantId = user.tenantId;
     try {
       const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
       const [queued, sending, sentToday, failedToday] = await Promise.all([
-        prisma.messageQueue.count({ where: { senderUserId: userId, status: "QUEUED" } }),
-        prisma.messageQueue.count({ where: { senderUserId: userId, status: "SENDING" } }),
-        prisma.messageLog.count({ where: { sentAt: { gte: todayStart } } }),
-        prisma.messageLog.count({ where: { status: "FAILED", sentAt: { gte: todayStart } } }),
+        prisma.messageQueue.count({ where: { senderUserId: userId, tenantId, status: "QUEUED" } }),
+        prisma.messageQueue.count({ where: { senderUserId: userId, tenantId, status: "SENDING" } }),
+        prisma.messageLog.count({ where: { tenantId, sentAt: { gte: todayStart } } }),
+        prisma.messageLog.count({ where: { tenantId, status: "FAILED", sentAt: { gte: todayStart } } }),
       ]);
       queueStats = { queued, sending, sentToday, failedToday };
     } catch {}

@@ -163,6 +163,7 @@ export async function POST(req: NextRequest) {
         webNo,
         address,
         branch: branch || "MAIN",
+        tenantId: session.tenantId, // ← Multi-tenant: assign to this company
         productName,
         brand,
         imei1,

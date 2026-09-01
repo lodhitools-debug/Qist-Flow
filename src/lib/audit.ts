@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 
 export async function logActivity(params: {
   userId?: string | null;
+  tenantId?: string | null; // Multi-tenant: which company this log belongs to
   action: string;
   entityType?: string;
   entityId?: string;
@@ -17,6 +18,7 @@ export async function logActivity(params: {
     await prisma.activityLog.create({
       data: {
         userId: params.userId || null,
+        tenantId: params.tenantId || "default",
         action: params.action,
         entityType: params.entityType || null,
         entityId: params.entityId || null,

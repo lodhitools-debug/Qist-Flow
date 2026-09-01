@@ -84,15 +84,19 @@ export function hasPermission(role: string, permission: string): boolean {
 }
 
 /**
- * Returns Prisma query 'where' clause that scopes customer queries strictly by role
+ * Returns Prisma query 'where' clause that scopes customer queries strictly by role AND tenant.
+ * tenantId ensures Company A never sees Company B's data.
  */
 export function getUserCustomerScope(user: TokenPayload): Prisma.CustomerWhereInput {
+  const tenantFilter = { tenantId: user.tenantId };
+
   if (user.role === "ADMIN") {
-    return {}; // Full global scope
+    return { ...tenantFilter }; // Full scope within tenant only
   }
 
   if (user.role === "MANAGER") {
     return {
+      ...tenantFilter,
       OR: [
         { assignedManagerId: user.userId },
         { assignedTo: { managerId: user.userId } },
@@ -103,6 +107,7 @@ export function getUserCustomerScope(user: TokenPayload): Prisma.CustomerWhereIn
 
   if (user.role === "RECOVERY_OFFICER") {
     return {
+      ...tenantFilter,
       assignedToUserId: user.userId,
     };
   }

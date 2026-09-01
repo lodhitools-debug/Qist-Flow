@@ -35,6 +35,7 @@ import {
 
 export class UserWhatsAppSession {
   public readonly userId: string;
+  public readonly tenantId: string;
   public readonly sessionDir: string;
 
   private sock: any | null = null;
@@ -58,8 +59,9 @@ export class UserWhatsAppSession {
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private qrWatchdogTimeout: NodeJS.Timeout | null = null;
 
-  constructor(userId: string) {
+  constructor(userId: string, tenantId: string = "default") {
     this.userId = userId;
+    this.tenantId = tenantId;
     const baseDir = path.join(process.cwd(), "whatsapp_sessions");
     if (!fs.existsSync(baseDir)) {
       try { fs.mkdirSync(baseDir, { recursive: true }); } catch {}
@@ -128,6 +130,7 @@ export class UserWhatsAppSession {
       await prisma.whatsAppSession.upsert({
         where: { userId: this.userId },
         update: {
+          tenantId: this.tenantId, // ← Multi-tenant isolation
           status: this.connectionState,
           qrCode: this.qrCodeDataUrl,
           qrExpiresAt: this.qrExpiresAt,
@@ -143,6 +146,7 @@ export class UserWhatsAppSession {
         },
         create: {
           userId: this.userId,
+          tenantId: this.tenantId, // ← Multi-tenant isolation
           status: this.connectionState,
           qrCode: this.qrCodeDataUrl,
           qrExpiresAt: this.qrExpiresAt,

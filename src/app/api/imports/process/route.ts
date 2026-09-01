@@ -33,9 +33,14 @@ export async function POST(req: NextRequest) {
     console.log(`[Import Process] Processing ${rows.length} rows for file: ${fileName || "unknown"}`);
 
     // 1. Pre-fetch existing accounts and existing installments in parallel for maximum speed
+    // ← Tenant-scoped: only fetch this company's customers
+    const tenantId = session?.tenantId || "default";
     const [existingCustomersList, existingInstallmentsList] = await Promise.all([
-      prisma.customer.findMany({ select: { id: true, account: true } }),
-      prisma.installment.findMany({ select: { id: true, customerId: true } }),
+      prisma.customer.findMany({ where: { tenantId }, select: { id: true, account: true } }),
+      prisma.installment.findMany({
+        where: { customer: { tenantId } },
+        select: { id: true, customerId: true },
+      }),
     ]);
 
     const existingCustomerMap = new Map(existingCustomersList.map((c) => [c.account, c.id]));
@@ -56,6 +61,7 @@ export async function POST(req: NextRequest) {
       data: {
         name: `Pre-Import Snapshot (${fileName || "report"})`,
         type: "AUTO_PRE_IMPORT",
+        tenantId, // ← Multi-tenant
         recordCounts: JSON.stringify({
           customers: totalCustomersBefore,
           installments: totalInstallmentsBefore,
@@ -78,6 +84,7 @@ export async function POST(req: NextRequest) {
         columnMapping: JSON.stringify(mapping),
         errorsJson: JSON.stringify(validation.errors),
         snapshotJson: JSON.stringify({ snapshotId: snapshot.id }),
+        tenantId, // ← Multi-tenant
         userId: session?.userId,
       },
     });
@@ -100,9 +107,9 @@ export async function POST(req: NextRequest) {
           try {
             const isExisting = existingCustomerMap.has(record.account);
 
-            // Upsert customer
+            // Upsert customer — tenant-scoped unique key
             const customer = await prisma.customer.upsert({
-              where: { account: record.account },
+              where: { account_tenantId: { account: record.account, tenantId } },
               update: {
                 customerName: record.customerName,
                 primaryPhone: record.primaryPhone,
@@ -126,6 +133,7 @@ export async function POST(req: NextRequest) {
               },
               create: {
                 account: record.account,
+                tenantId, // ← Multi-tenant
                 customerName: record.customerName,
                 primaryPhone: record.primaryPhone,
                 secondaryPhone: record.secondaryPhone || null,
@@ -269,6 +277,7 @@ export async function POST(req: NextRequest) {
 
     await logActivity({
       userId: session?.userId,
+      tenantId,
       action: "EXCEL_IMPORT",
       entityType: "ExcelImport",
       entityId: excelImport.id,

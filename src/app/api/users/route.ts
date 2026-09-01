@@ -21,7 +21,9 @@ export async function GET(req: NextRequest) {
     const managerFilter = searchParams.get("managerId");
     const search = searchParams.get("search")?.trim().toLowerCase() || "";
 
-    const where: any = {};
+    const where: any = {
+      tenantId: session.tenantId, // ← Multi-tenant: only show users of this company
+    };
 
     // Role-based scoping
     if (session.role === "MANAGER") {
@@ -82,7 +84,7 @@ export async function GET(req: NextRequest) {
     let managers: any[] = [];
     if (session.role === "ADMIN") {
       managers = await prisma.user.findMany({
-        where: { role: "MANAGER", isActive: true },
+        where: { role: "MANAGER", isActive: true, tenantId: session.tenantId },
         select: { id: true, name: true, email: true, branch: true },
         orderBy: { name: "asc" },
       });
@@ -167,6 +169,7 @@ export async function POST(req: NextRequest) {
         email: cleanEmail,
         passwordHash,
         role: targetRole,
+        tenantId: session.tenantId, // ← Inherit tenant from creating admin
         branch: branch || "MAIN",
         phone: phone || null,
         employeeCode: employeeCode || null,
@@ -243,6 +246,7 @@ export async function DELETE(req: NextRequest) {
     const result = await prisma.user.deleteMany({
       where: {
         id: { in: filteredIds },
+        tenantId: session.tenantId, // ← Only delete users of this company
         role: { not: "ADMIN" },
       },
     });
