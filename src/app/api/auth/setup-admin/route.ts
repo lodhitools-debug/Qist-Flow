@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
       role: "ADMIN",
       branch: newAdmin.branch,
       mustChangePassword: false,
+      tenantId: newAdmin.tenantId || "default",
     });
 
     const response = NextResponse.json({

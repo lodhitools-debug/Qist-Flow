@@ -34,7 +34,7 @@ export const DEFAULT_ESCALATION_CONFIG: GuarantorEscalationConfig = {
  */
 export async function getEscalationConfig(): Promise<GuarantorEscalationConfig> {
   try {
-    const setting = await prisma.systemSetting.findUnique({
+    const setting = await prisma.systemSetting.findFirst({
       where: { key: "guarantor_escalation_config" },
     });
     if (setting?.value) {

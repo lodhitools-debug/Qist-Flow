@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
       branch: updatedUser.branch,
       managerId: updatedUser.managerId,
       mustChangePassword: false,
+      tenantId: updatedUser.tenantId || "default",
     });
 
     const response = NextResponse.json({

@@ -122,6 +122,7 @@ export async function GET(req: NextRequest) {
       branch: user.branch,
       managerId: user.managerId,
       mustChangePassword: user.mustChangePassword,
+      tenantId: user.tenantId || "default",
     });
 
     await logActivity({
