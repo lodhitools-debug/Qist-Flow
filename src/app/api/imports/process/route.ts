@@ -107,54 +107,59 @@ export async function POST(req: NextRequest) {
           try {
             const isExisting = existingCustomerMap.has(record.account);
 
-            // Upsert customer — tenant-scoped unique key
-            const customer = await prisma.customer.upsert({
-              where: { account_tenantId: { account: record.account, tenantId } },
-              update: {
-                customerName: record.customerName,
-                primaryPhone: record.primaryPhone,
-                secondaryPhone: record.secondaryPhone || null,
-                cnic: record.cnic || null,
-                webNo: record.webNo || null,
-                address: record.address || null,
-                branch: record.branch || "MAIN",
-                productName: record.productName || null,
-                brand: record.brand || null,
-                imei1: record.imei1 || null,
-                imei2: record.imei2 || null,
-                guarantor1Name: record.guarantor1Name || null,
-                guarantor1Phone: record.guarantor1Phone || null,
-                guarantor2Name: record.guarantor2Name || null,
-                guarantor2Phone: record.guarantor2Phone || null,
-                salesPerson: record.salesPerson || null,
-                recoveryPerson: record.recoveryPerson || null,
-                omsRecoveryPerson: record.omsRecoveryPerson || null,
-                comment: record.comment || null,
-              },
-              create: {
-                account: record.account,
-                tenantId, // ← Multi-tenant
-                customerName: record.customerName,
-                primaryPhone: record.primaryPhone,
-                secondaryPhone: record.secondaryPhone || null,
-                cnic: record.cnic || null,
-                webNo: record.webNo || null,
-                address: record.address || null,
-                branch: record.branch || "MAIN",
-                productName: record.productName || null,
-                brand: record.brand || null,
-                imei1: record.imei1 || null,
-                imei2: record.imei2 || null,
-                guarantor1Name: record.guarantor1Name || null,
-                guarantor1Phone: record.guarantor1Phone || null,
-                guarantor2Name: record.guarantor2Name || null,
-                guarantor2Phone: record.guarantor2Phone || null,
-                salesPerson: record.salesPerson || null,
-                recoveryPerson: record.recoveryPerson || null,
-                omsRecoveryPerson: record.omsRecoveryPerson || null,
-                comment: record.comment || null,
-              },
-            });
+            let customer;
+            if (isExisting) {
+              customer = await prisma.customer.update({
+                where: { account_tenantId: { account: record.account, tenantId } },
+                data: {
+                  customerName: record.customerName,
+                  primaryPhone: record.primaryPhone,
+                  secondaryPhone: record.secondaryPhone || null,
+                  cnic: record.cnic || null,
+                  webNo: record.webNo || null,
+                  address: record.address || null,
+                  branch: record.branch || "MAIN",
+                  productName: record.productName || null,
+                  brand: record.brand || null,
+                  imei1: record.imei1 || null,
+                  imei2: record.imei2 || null,
+                  guarantor1Name: record.guarantor1Name || null,
+                  guarantor1Phone: record.guarantor1Phone || null,
+                  guarantor2Name: record.guarantor2Name || null,
+                  guarantor2Phone: record.guarantor2Phone || null,
+                  salesPerson: record.salesPerson || null,
+                  recoveryPerson: record.recoveryPerson || null,
+                  omsRecoveryPerson: record.omsRecoveryPerson || null,
+                  comment: record.comment || null,
+                },
+              });
+            } else {
+              customer = await prisma.customer.create({
+                data: {
+                  account: record.account,
+                  tenantId, // ← Multi-tenant
+                  customerName: record.customerName,
+                  primaryPhone: record.primaryPhone,
+                  secondaryPhone: record.secondaryPhone || null,
+                  cnic: record.cnic || null,
+                  webNo: record.webNo || null,
+                  address: record.address || null,
+                  branch: record.branch || "MAIN",
+                  productName: record.productName || null,
+                  brand: record.brand || null,
+                  imei1: record.imei1 || null,
+                  imei2: record.imei2 || null,
+                  guarantor1Name: record.guarantor1Name || null,
+                  guarantor1Phone: record.guarantor1Phone || null,
+                  guarantor2Name: record.guarantor2Name || null,
+                  guarantor2Phone: record.guarantor2Phone || null,
+                  salesPerson: record.salesPerson || null,
+                  recoveryPerson: record.recoveryPerson || null,
+                  omsRecoveryPerson: record.omsRecoveryPerson || null,
+                  comment: record.comment || null,
+                },
+              });
+            }
 
             // Compute status
             const statusResult = calculateInstallmentStatus({
