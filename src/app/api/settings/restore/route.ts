@@ -28,11 +28,18 @@ export async function POST(req: NextRequest) {
 
     if (customers && Array.isArray(customers)) {
       for (const c of customers) {
-        await prisma.customer.upsert({
-          where: { account: c.account },
-          update: { ...c, id: undefined, createdAt: undefined, updatedAt: undefined },
-          create: { ...c, id: undefined, createdAt: undefined, updatedAt: undefined },
-        });
+        const tenantId = c.tenantId || "default";
+        const existing = await prisma.customer.findFirst({ where: { account: c.account, tenantId } });
+        if (existing) {
+          await prisma.customer.update({
+            where: { id: existing.id },
+            data: { ...c, id: undefined, createdAt: undefined, updatedAt: undefined },
+          });
+        } else {
+          await prisma.customer.create({
+            data: { ...c, id: undefined, createdAt: undefined, updatedAt: undefined, tenantId },
+          });
+        }
       }
     }
 
