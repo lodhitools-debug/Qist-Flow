@@ -198,12 +198,12 @@ export default function WhatsAppConnectionPage() {
   };
 
   // ── Actions ─────────────────────────────────────────────────────────────────
-  const handleConnect = async () => {
+  const handleConnect = async (forceFresh: boolean = false) => {
     setLoadingConnect(true);
     setNotice(null);
     setQrCode(null);
     setStatus("INIT_QR");
-    const { ok, data } = await safePost("/api/whatsapp/connect");
+    const { ok, data } = await safePost("/api/whatsapp/connect", { forceFresh });
     setLoadingConnect(false);
     if (!ok || data?.success === false) {
       setStatus("ERROR");
@@ -233,8 +233,8 @@ export default function WhatsAppConnectionPage() {
     setShowChangeModal(false);
     setLoadingChangeNumber(true);
     const { ok, data } = await safePost("/api/whatsapp/change-number");
-    setLoadingChangeNumber(false);
     if (!ok || data?.success === false) {
+      setLoadingChangeNumber(false);
       showNotice("error", data?.error || "Could not remove WhatsApp. Please try again.");
     } else {
       setStatus("LOGGED_OUT");
@@ -242,7 +242,12 @@ export default function WhatsAppConnectionPage() {
       setPhone(null);
       setConnectedName(null);
       setConnectedAt(null);
-      showNotice("success", "WhatsApp account removed. Connect a new number below.");
+      showNotice("success", "WhatsApp account removed. Generating new QR code...");
+      // Auto-trigger fresh connect after a short delay so user sees the QR without clicking again
+      setTimeout(async () => {
+        setLoadingChangeNumber(false);
+        await handleConnect(true);
+      }, 1_500);
     }
   };
 
@@ -250,7 +255,7 @@ export default function WhatsAppConnectionPage() {
     setLoadingConnect(true);
     setQrCode(null);
     setStatus("INIT_QR");
-    const { ok, data } = await safePost("/api/whatsapp/connect");
+    const { ok, data } = await safePost("/api/whatsapp/connect", { forceFresh: true });
     setLoadingConnect(false);
     if (!ok) showNotice("error", "Could not generate new QR. Please try again.");
     else { setStatus(data.status || "INIT_QR"); fetchStatus(); }
@@ -590,12 +595,16 @@ export default function WhatsAppConnectionPage() {
             </div>
             <button
               disabled={loadingConnect}
-              onClick={handleConnect}
+              onClick={() => handleConnect(false)}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm disabled:opacity-50 transition-colors shadow-md shadow-emerald-500/20"
             >
               {loadingConnect ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
               Reconnect WhatsApp
             </button>
+            {/* Reconnect info */}
+            <p className="text-center text-xs text-slate-400">
+              Your WhatsApp session is saved — no QR scan needed.
+            </p>
             <button
               onClick={() => setShowChangeModal(true)}
               className="w-full text-xs text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
@@ -629,7 +638,7 @@ export default function WhatsAppConnectionPage() {
 
             <button
               disabled={loadingConnect}
-              onClick={handleConnect}
+              onClick={() => handleConnect(true)}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm disabled:opacity-50 transition-colors shadow-md shadow-emerald-500/20"
             >
               {loadingConnect ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}

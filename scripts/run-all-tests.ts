@@ -168,6 +168,7 @@ async function runAllTests() {
     email: "admin@qistbazar.pk",
     role: "ADMIN" as const,
     branch: "MAIN",
+    tenantId: "default",
   };
 
   const jwt = await signToken(testPayload);

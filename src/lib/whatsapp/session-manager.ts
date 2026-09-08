@@ -427,9 +427,11 @@ export class UserWhatsAppSession {
       throw new Error("Invalid phone number. Must include country code (e.g. 923001234567).");
     }
 
-    // If already connected with saved auth, disconnect first
-    if (this.hasSavedAuth()) {
+    // If already connected with saved auth, disconnect first to close old socket
+    if (this.hasSavedAuth() || this.sock) {
       await this.disconnect();
+      // Reset the guard so init() is not blocked after user-requested disconnect
+      this.userRequestedDisconnect = false;
     }
 
     this.connectionState = "PAIRING";
@@ -579,6 +581,11 @@ class WhatsAppSessionManager {
     userId: string,
     forceFresh: boolean = false
   ): Promise<{ status: WhatsAppConnectionState; qrCode: string | null }> {
+    // If forceFresh, cancel any existing lock — we want a completely clean start
+    if (forceFresh) {
+      this.connectionLocks.delete(userId);
+    }
+
     const existingLock = this.connectionLocks.get(userId);
     if (existingLock) {
       console.log(`🔒 [User ${userId}] Connect already in progress — waiting for existing lock.`);
@@ -587,26 +594,43 @@ class WhatsAppSessionManager {
 
     const connectPromise = (async () => {
       try {
+        if (forceFresh) {
+          // Destroy existing socket and clear credentials folder on disk
+          const existingSession = this.sessions.get(userId);
+          if (existingSession) {
+            existingSession.destroySocket();
+            existingSession.clearTimers();
+          }
+          try {
+            const sessionDir = path.join(process.cwd(), "whatsapp_sessions", userId);
+            if (fs.existsSync(sessionDir)) {
+              fs.rmSync(sessionDir, { recursive: true, force: true });
+            }
+          } catch {}
+          // Always remove old session — a fresh one will be created
+          this.sessions.delete(userId);
+          const fresh = this.getSession(userId);
+          await fresh.init();
+          await new Promise((r) => setTimeout(r, 800));
+          const info = await fresh.getConnectedInfo();
+          return { status: info.status, qrCode: info.qrCode || null };
+        }
+
+        // Non-forceFresh: reconnect with existing session/credentials
         const session = this.getSession(userId);
 
-        if (session.isConnected() && !forceFresh) {
+        if (session.isConnected()) {
           const info = await session.getConnectedInfo();
           return { status: info.status, qrCode: null };
         }
 
-        if (forceFresh) {
-          // Destroy existing socket and clear credentials folder on disk without DB LOGGED_OUT flicker
-          session.destroySocket();
-          session.clearTimers();
-          try {
-            if (fs.existsSync(session.sessionDir)) {
-              fs.rmSync(session.sessionDir, { recursive: true, force: true });
-            }
-          } catch {}
+        // If the session's isLoggedOut flag is set (e.g. from a previous logout), 
+        // create a fresh session object — credentials were already wiped.
+        if (session.isIntentionallyLoggedOut()) {
           this.sessions.delete(userId);
           const fresh = this.getSession(userId);
           await fresh.init();
-          await new Promise((r) => setTimeout(r, 500));
+          await new Promise((r) => setTimeout(r, 800));
           const info = await fresh.getConnectedInfo();
           return { status: info.status, qrCode: info.qrCode || null };
         }
@@ -638,12 +662,17 @@ class WhatsAppSessionManager {
   public async disconnectUser(userId: string): Promise<void> {
     const session = this.getSession(userId);
     await session.disconnect();
+    // After disconnect, remove from map so reconnect gets a fresh userRequestedDisconnect=false session
+    this.sessions.delete(userId);
   }
 
   public async logoutUser(userId: string): Promise<void> {
     const session = this.getSession(userId);
     await session.logout();
-    this.sessions.delete(userId); // Remove from map — next getSession creates fresh
+    // Remove from map AND clear any pending connection locks
+    this.sessions.delete(userId);
+    this.connectionLocks.delete(userId);
+    console.log(`🧹 [Session Manager] Cleaned up session map & locks for user: ${userId}`);
   }
 
   public async getUserStatus(userId: string): Promise<WhatsAppConnectedInfo> {

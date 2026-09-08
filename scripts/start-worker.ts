@@ -97,16 +97,20 @@ async function runDbWatchLoop() {
         ) {
           console.log(`🛑 [Worker] Disconnecting active session for user: ${userId}`);
           lastActionPerUser.set(userId, now);
-          await userSession.disconnect().catch(() => {});
+          await waSessionManager.disconnectUser(userId).catch(() => {});
         }
 
-        // 2. Logout / Change Number request — only act if currently active/connected
+        // 2. Logout / Change Number request
+        //    — act on any active session OR if the in-memory session still has isLoggedOut=false
+        //    — this prevents the edge case where DB says LOGGED_OUT but worker has NOT cleaned up
         else if (
           session.status === "LOGGED_OUT" &&
-          (userSession.isConnected() || ["CONNECTED", "QR_READY", "PAIRING", "CONNECTING", "RECONNECTING"].includes(userSession.getConnectionState())) &&
-          !onCooldown
+          !onCooldown &&
+          (userSession.isConnected() ||
+            ["CONNECTED", "QR_READY", "PAIRING", "CONNECTING", "RECONNECTING"].includes(userSession.getConnectionState()) ||
+            !userSession.isIntentionallyLoggedOut())
         ) {
-          console.log(`🗑️ [Worker] Logging out active session for user: ${userId}`);
+          console.log(`🗑️ [Worker] Logging out session for user: ${userId}`);
           lastActionPerUser.set(userId, now);
           await waSessionManager.logoutUser(userId).catch(() => {});
         }
@@ -135,19 +139,30 @@ async function runDbWatchLoop() {
           }
         }
 
-        // 4. INIT_QR: fresh QR requested — always force fresh (wipe old creds)
+        // 4. INIT_QR: a fresh new QR was requested (e.g. "Connect WhatsApp" with no saved creds or forceFresh)
         else if (
           session.status === "INIT_QR" &&
           !session.qrCode &&
           !userSession.isConnected() &&
           !onCooldown
         ) {
-          console.log(`🔄 [Worker] Fresh QR requested for ${userId}`);
-          lastActionPerUser.set(userId, now);
-          // connectUser with forceFresh=true wipes old creds and creates a brand-new socket
-          waSessionManager.connectUser(userId, true).catch((err) => {
-            console.error(`❌ [Worker] QR connect failed for ${userId}:`, err.message);
-          });
+          // Check if user already has saved credentials
+          const hasSavedAuth = userSession.hasSavedAuth();
+          if (hasSavedAuth) {
+            // Has creds — reconnect WITHOUT wiping them (no new QR needed, will auto connect)
+            console.log(`🔄 [Worker] INIT_QR with existing creds for ${userId} — reconnecting (no wipe)`);
+            lastActionPerUser.set(userId, now);
+            waSessionManager.connectUser(userId, false).catch((err) => {
+              console.error(`❌ [Worker] Reconnect failed for ${userId}:`, err.message);
+            });
+          } else {
+            // No creds — wipe and generate fresh QR
+            console.log(`🔄 [Worker] Fresh QR requested for ${userId} (no saved creds)`);
+            lastActionPerUser.set(userId, now);
+            waSessionManager.connectUser(userId, true).catch((err) => {
+              console.error(`❌ [Worker] QR connect failed for ${userId}:`, err.message);
+            });
+          }
         }
 
         // 5. CONNECTING: reconnect with saved credentials (no new QR)
@@ -163,6 +178,13 @@ async function runDbWatchLoop() {
             lastActionPerUser.set(userId, now);
             waSessionManager.connectUser(userId, false).catch((err) => {
               console.error(`❌ [Worker] Reconnect failed for ${userId}:`, err.message);
+            });
+          } else {
+            // No saved auth but asked to connect — fall back to fresh QR
+            console.log(`🔄 [Worker] CONNECTING but no saved creds for ${userId} — falling back to fresh QR`);
+            lastActionPerUser.set(userId, now);
+            waSessionManager.connectUser(userId, true).catch((err) => {
+              console.error(`❌ [Worker] Fresh QR fallback failed for ${userId}:`, err.message);
             });
           }
         }

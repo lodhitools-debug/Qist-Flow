@@ -18,13 +18,16 @@ export async function POST(req: NextRequest) {
     const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
     const secret = process.env.WHATSAPP_SERVICE_SECRET || "";
 
+    const body = await req.json().catch(() => ({}));
+    const forceFresh = body.forceFresh === true;
+
     // Check if already connected — short-circuit
     const current = await prisma.whatsAppSession.findUnique({
       where: { userId },
       select: { status: true, connectedPhone: true, connectedName: true },
     }).catch(() => null);
 
-    if (current?.status === "CONNECTED" && current?.connectedPhone) {
+    if (current?.status === "CONNECTED" && current?.connectedPhone && !forceFresh) {
       return NextResponse.json({
         success: true,
         status: "CONNECTED",
@@ -34,16 +37,28 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Set DB to INIT_QR so the worker's DB-watch loop or direct call picks it up
+    // Determine target status:
+    // - forceFresh, LOGGED_OUT, NOT_CONNECTED, ERROR → INIT_QR (new QR or no creds)
+    // - DISCONNECTED (has saved creds, wants to reconnect) → CONNECTING (no QR wipe)
+    const needsFreshQr = forceFresh 
+      || !current  // no session yet
+      || current.status === "LOGGED_OUT"
+      || current.status === "NOT_CONNECTED"
+      || current.status === "ERROR";
+    const targetStatus = needsFreshQr ? "INIT_QR" : "CONNECTING";
+
+    // Set DB to targetStatus so the worker's DB-watch loop or direct call picks it up
     await prisma.whatsAppSession.upsert({
       where: { userId },
       update: {
-        status: "INIT_QR",
+        status: targetStatus,
         errorMessage: null,
         pairingCode: null,
         requestedPhone: null,
-        qrCode: null,
-        qrExpiresAt: null,
+        ...(targetStatus === "INIT_QR" && {
+          qrCode: null,
+          qrExpiresAt: null,
+        }),
         updatedAt: new Date(),
       },
       create: {
@@ -56,7 +71,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Notify the AlwaysData worker directly so it does not have to wait for the 2s poll
+    // Notify the AlwaysData worker directly so it does not have to wait for the poll
     if (serviceUrl) {
       try {
         const controller = new AbortController();
@@ -67,7 +82,7 @@ export async function POST(req: NextRequest) {
             "Content-Type": "application/json",
             "x-whatsapp-secret": secret,
           },
-          body: JSON.stringify({ userId, forceFresh: true }),
+          body: JSON.stringify({ userId, forceFresh }),
           signal: controller.signal,
         }).catch(() => {});
         clearTimeout(t);
@@ -76,14 +91,14 @@ export async function POST(req: NextRequest) {
 
     await logActivity({
       userId,
-      action: "WHATSAPP_CONNECT_INIT",
-      details: { worker: !!serviceUrl },
+      action: forceFresh ? "WHATSAPP_CONNECT_INIT" : "WHATSAPP_RECONNECT",
+      details: { worker: !!serviceUrl, forceFresh },
     }).catch(() => {});
 
     return NextResponse.json({
       success: true,
-      status: "INIT_QR",
-      message: "Connecting to WhatsApp... QR code will appear shortly.",
+      status: targetStatus,
+      message: targetStatus === "INIT_QR" ? "Connecting to WhatsApp... QR code will appear shortly." : "Reconnecting to WhatsApp...",
     });
   } catch (error: any) {
     console.error(`[WhatsApp Connect] userId=${userId}:`, error.message);
