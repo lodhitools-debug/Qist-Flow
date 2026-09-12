@@ -61,6 +61,11 @@ function LoginForm() {
         throw new Error(data.error || "Login failed");
       }
 
+      if (data.user.role === "SUPER_ADMIN") {
+        await fetch("/api/auth/logout", { method: "POST" });
+        throw new Error("Super Admins must login via the SaaS portal (/saas/login)");
+      }
+
       router.push("/");
       router.refresh();
     } catch (err: any) {
