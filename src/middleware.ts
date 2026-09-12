@@ -6,6 +6,7 @@ export function middleware(request: NextRequest) {
   // Public paths and API routes (APIs handle their own auth via requireAuth)
   if (
     pathname.startsWith("/login") ||
+    pathname.startsWith("/saas/login") ||
     pathname.startsWith("/change-password") ||
     pathname.startsWith("/api/") ||
     pathname.startsWith("/_next") ||
