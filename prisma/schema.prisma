@@ -18,6 +18,23 @@ model Tenant {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
+  // SaaS Plan & Limits
+  plan                String               @default("FREE")   // FREE, BASIC, PRO, ENTERPRISE
+  maxUsers            Int                  @default(10)
+  maxCustomers        Int                  @default(1000)
+
+  // Contact & Branding
+  contactEmail        String?
+  contactPhone        String?
+  address             String?
+  logoUrl             String?
+  primaryColor        String?              @default("#10b981")
+
+  // Subscription
+  subscriptionStartAt DateTime?
+  subscriptionEndAt   DateTime?
+  billingNote         String?
+
   // Relations
   users               User[]
   customers           Customer[]
@@ -32,6 +49,8 @@ model Tenant {
   systemSettings      SystemSetting[]
 
   @@index([slug])
+  @@index([plan])
+  @@index([isActive])
 }
 
 model User {
