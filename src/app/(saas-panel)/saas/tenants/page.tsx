@@ -116,7 +116,7 @@ export default function SaasAdminPage() {
         </button>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <div className="flex justify-center items-center h-64">
           <RefreshCw className="w-8 h-8 animate-spin text-slate-300" />
         </div>
