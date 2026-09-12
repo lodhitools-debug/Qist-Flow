@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { Building, LogOut, ChevronLeft } from "lucide-react";
+import { Building, LogOut, ChevronLeft, LayoutDashboard, CreditCard, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getClientSession } from "@/lib/client-auth";
 
@@ -79,7 +79,7 @@ export default function SaasSidebar({
           <div className="space-y-1">
             <div className="px-3 mb-2">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                Main Menu
+                Overview
               </span>
             </div>
             <Link
@@ -92,8 +92,60 @@ export default function SaasSidebar({
                   : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
               )}
             >
-              <Building className={clsx("w-4 h-4", pathname === "/saas" ? "text-indigo-400" : "text-slate-500")} />
-              Manage Branches
+              <LayoutDashboard className={clsx("w-4 h-4", pathname === "/saas" ? "text-indigo-400" : "text-slate-500")} />
+              Dashboard
+            </Link>
+
+            <div className="px-3 mt-6 mb-2">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                Management
+              </span>
+            </div>
+            <Link
+              href="/saas/tenants"
+              onClick={onClose}
+              className={clsx(
+                "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200",
+                pathname === "/saas/tenants"
+                  ? "bg-indigo-500/10 text-indigo-400 font-semibold"
+                  : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+              )}
+            >
+              <Building className={clsx("w-4 h-4", pathname === "/saas/tenants" ? "text-indigo-400" : "text-slate-500")} />
+              Tenants / Branches
+            </Link>
+
+            <Link
+              href="/saas/billing"
+              onClick={onClose}
+              className={clsx(
+                "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200",
+                pathname === "/saas/billing"
+                  ? "bg-indigo-500/10 text-indigo-400 font-semibold"
+                  : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+              )}
+            >
+              <CreditCard className={clsx("w-4 h-4", pathname === "/saas/billing" ? "text-indigo-400" : "text-slate-500")} />
+              Billing & Subscriptions
+            </Link>
+
+            <div className="px-3 mt-6 mb-2">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                System
+              </span>
+            </div>
+            <Link
+              href="/saas/settings"
+              onClick={onClose}
+              className={clsx(
+                "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200",
+                pathname === "/saas/settings"
+                  ? "bg-indigo-500/10 text-indigo-400 font-semibold"
+                  : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+              )}
+            >
+              <Settings className={clsx("w-4 h-4", pathname === "/saas/settings" ? "text-indigo-400" : "text-slate-500")} />
+              Global Settings
             </Link>
           </div>
         </div>
