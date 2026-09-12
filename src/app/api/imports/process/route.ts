@@ -8,7 +8,7 @@ import { ExcelColumnMapping } from "@/lib/excel/types";
 import { mapRowToCustomer } from "@/lib/excel/mapper";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   try {
