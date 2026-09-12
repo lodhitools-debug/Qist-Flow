@@ -2,7 +2,7 @@ import { prisma } from "./prisma";
 import { TokenPayload } from "./auth";
 import { Prisma } from "@prisma/client";
 
-export type UserRole = "ADMIN" | "MANAGER" | "RECOVERY_OFFICER";
+export type UserRole = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "RECOVERY_OFFICER";
 
 export const PERMISSIONS = {
   // User permissions
@@ -47,12 +47,21 @@ export const PERMISSIONS = {
 
   // System Settings
   SETTINGS_MANAGE: "settings:manage",
+
+  // SaaS Super Admin (cross-tenant)
+  SAAS_TENANTS_READ: "saas:tenants:read",
+  SAAS_TENANTS_WRITE: "saas:tenants:write",
+  SAAS_ANALYTICS: "saas:analytics",
+  SAAS_USERS_READ: "saas:users:read",
+  SAAS_USERS_WRITE: "saas:users:write",
+  SAAS_SETTINGS: "saas:settings",
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
 
 const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
-  ADMIN: Object.values(PERMISSIONS),
+  SUPER_ADMIN: Object.values(PERMISSIONS), // All permissions across all tenants
+  ADMIN: Object.values(PERMISSIONS).filter(p => !p.startsWith('saas:')), // All tenant permissions, no cross-tenant
   MANAGER: [
     PERMISSIONS.USERS_READ_TEAM,
     PERMISSIONS.USERS_CREATE_OFFICER,

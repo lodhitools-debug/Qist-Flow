@@ -108,6 +108,15 @@ export async function requireAuth(
 }
 
 /**
+ * Guard for SaaS-only routes — only SUPER_ADMIN can access
+ */
+export async function requireSuperAdmin(
+  req: NextRequest
+): Promise<{ user: TokenPayload; errorResponse?: null } | { user: null; errorResponse: NextResponse }> {
+  return requireAuth(req, ["SUPER_ADMIN"]);
+}
+
+/**
  * Generates a high-entropy temporary password
  */
 export function generateTemporaryPassword(): string {
