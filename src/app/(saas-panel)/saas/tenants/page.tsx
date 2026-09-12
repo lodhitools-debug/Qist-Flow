@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Building, Plus, Users, Shield, RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react";
+import useSWR from "swr";
+import { Building, Plus, Users, Shield, RefreshCw, AlertTriangle, CheckCircle2, Edit, Trash2, Power, PowerOff } from "lucide-react";
 import clsx from "clsx";
 
+const fetcher = (url: string) => fetch(url).then(r => r.json());
+
 export default function SaasAdminPage() {
-  const [tenants, setTenants] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error, mutate, isLoading } = useSWR("/api/saas/tenants", fetcher);
+  const tenants = data?.tenants || [];
   
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -20,23 +22,14 @@ export default function SaasAdminPage() {
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
 
-  const fetchTenants = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch("/api/saas/tenants");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load tenants");
-      setTenants(data.tenants || []);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Auto-generate slug when name changes
   useEffect(() => {
-    fetchTenants();
-  }, []);
+    if (name) {
+      setSlug(name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-') + '-' + Math.floor(1000 + Math.random() * 9000));
+    } else {
+      setSlug("");
+    }
+  }, [name]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,20 +44,43 @@ export default function SaasAdminPage() {
           plan: "PRO", maxUsers: 50, maxCustomers: 50000
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to create branch");
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || "Failed to create branch");
       
+      mutate(); // Revalidate SWR
       setShowModal(false);
       setName("");
       setSlug("");
       setAdminName("");
-      setAdminEmail("");
       setAdminPassword("");
-      fetchTenants();
+      setAdminPassword("");
     } catch (err: any) {
       setFormError(err.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleToggleStatus = async (id: string, currentStatus: boolean) => {
+    try {
+      await fetch(`/api/saas/tenants/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !currentStatus })
+      });
+      mutate();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to permanently delete this branch? This action cannot be undone.")) return;
+    try {
+      await fetch(`/api/saas/tenants/${id}`, { method: "DELETE" });
+      mutate();
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -160,6 +176,22 @@ export default function SaasAdminPage() {
                 ) : (
                   <p className="text-[11px] text-rose-500 mt-1">No admin user found</p>
                 )}
+              </div>
+              
+              <div className="flex gap-2 pt-2">
+                <button 
+                  onClick={() => handleToggleStatus(t.id, t.isActive)}
+                  className="flex-1 text-[11px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-400 py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                >
+                  {t.isActive ? <PowerOff className="w-3 h-3 text-rose-500" /> : <Power className="w-3 h-3 text-emerald-500" />}
+                  {t.isActive ? "Deactivate" : "Activate"}
+                </button>
+                <button 
+                  onClick={() => handleDelete(t.id)}
+                  className="px-3 text-[11px] font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 py-2 rounded-lg transition-colors flex items-center justify-center"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           ))}

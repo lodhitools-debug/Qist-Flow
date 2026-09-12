@@ -34,6 +34,14 @@ model Tenant {
   subscriptionStartAt DateTime?
   subscriptionEndAt   DateTime?
   billingNote         String?
+  customPlanId        String?
+  customPlan          SubscriptionPlan?    @relation(fields: [customPlanId], references: [id], onDelete: SetNull)
+
+  // WhatsApp Business API Credentials
+  waApiEndpoint       String?
+  waApiToken          String?
+  waPhoneNumberId     String?
+  waAccountId         String?
 
   // Relations
   users               User[]
@@ -51,6 +59,20 @@ model Tenant {
   @@index([slug])
   @@index([plan])
   @@index([isActive])
+}
+
+model SubscriptionPlan {
+  id                  String               @id @default(cuid())
+  name                String               // "Silver", "Gold", "Diamond"
+  price               Float
+  maxUsers            Int
+  maxCustomers        Int
+  features            String?              // JSON array of features
+  isPublic            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  
+  tenants             Tenant[]
 }
 
 model User {

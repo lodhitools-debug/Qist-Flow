@@ -1,90 +1,96 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { CreditCard, CheckCircle2, Shield, Zap, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import useSWR from "swr";
+import { CreditCard, CheckCircle2, Shield, Zap, RefreshCw, Plus, Edit } from "lucide-react";
 import clsx from "clsx";
 
-const PLANS = [
-  { id: "FREE", name: "Free", price: "$0", limits: "10 Users, 1,000 Customers", icon: Shield, color: "slate" },
-  { id: "BASIC", name: "Basic", price: "$29", limits: "25 Users, 5,000 Customers", icon: CheckCircle2, color: "blue" },
-  { id: "PRO", name: "Pro", price: "$99", limits: "50 Users, 50,000 Customers", icon: Zap, color: "purple" },
-  { id: "ENTERPRISE", name: "Enterprise", price: "$299", limits: "Unlimited", icon: CreditCard, color: "amber" },
-];
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 export default function SaasBillingPage() {
-  const [tenants, setTenants] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: tenantData, mutate: mutateTenants, isLoading: loadingTenants } = useSWR("/api/saas/tenants", fetcher);
+  const { data: planData, mutate: mutatePlans, isLoading: loadingPlans } = useSWR("/api/saas/plans", fetcher);
+  
+  const tenants = tenantData?.tenants || [];
+  const dbPlans = planData?.plans || [];
 
-  const fetchTenants = async () => {
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [maxUsers, setMaxUsers] = useState("");
+  const [maxCustomers, setMaxCustomers] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleCreatePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
     try {
-      setLoading(true);
-      const res = await fetch("/api/saas/tenants");
-      const data = await res.json();
-      if (res.ok) setTenants(data.tenants || []);
+      await fetch("/api/saas/plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, price, maxUsers, maxCustomers })
+      });
+      mutatePlans();
+      setShowPlanModal(false);
+      setName(""); setPrice(""); setMaxUsers(""); setMaxCustomers("");
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
-
-  useEffect(() => {
-    fetchTenants();
-  }, []);
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-950 p-4 md:p-8 custom-scrollbar">
       <div className="max-w-7xl mx-auto space-y-8">
         
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Billing & Subscriptions</h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Manage plans and limits for all branches.
-          </p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-white tracking-tight">Billing & Subscriptions</h1>
+            <p className="text-sm text-slate-400 mt-1">
+              Manage custom pricing plans and branch subscriptions.
+            </p>
+          </div>
+          <button 
+            onClick={() => setShowPlanModal(true)}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md shadow-indigo-500/20"
+          >
+            <Plus className="w-4 h-4" /> Create Custom Plan
+          </button>
         </div>
 
         {/* Plans Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {PLANS.map(plan => (
-            <div key={plan.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group">
-              <div className={clsx(
-                "absolute top-0 right-0 w-24 h-24 bg-gradient-to-br opacity-10 rounded-bl-full",
-                plan.color === "slate" ? "from-slate-400 to-slate-600" :
-                plan.color === "blue" ? "from-blue-400 to-blue-600" :
-                plan.color === "purple" ? "from-purple-400 to-purple-600" :
-                "from-amber-400 to-amber-600"
-              )} />
-              
-              <div className="flex items-center gap-3 mb-4">
-                <div className={clsx(
-                  "p-2 rounded-xl",
-                  plan.color === "slate" ? "bg-slate-500/10 text-slate-400" :
-                  plan.color === "blue" ? "bg-blue-500/10 text-blue-400" :
-                  plan.color === "purple" ? "bg-purple-500/10 text-purple-400" :
-                  "bg-amber-500/10 text-amber-400"
-                )}>
-                  <plan.icon className="w-5 h-5" />
+        {loadingPlans ? (
+          <div className="flex justify-center p-8"><RefreshCw className="w-6 h-6 animate-spin text-slate-500" /></div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {dbPlans.map((plan: any, i: number) => (
+              <div key={plan.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
+                    <Zap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-white">{plan.name}</h3>
+                    <p className="text-xs text-slate-400">${plan.price} / month</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-white">{plan.name}</h3>
-                  <p className="text-xs text-slate-400">{plan.price} / month</p>
-                </div>
+                
+                <p className="text-xs font-medium text-slate-500 bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">
+                  {plan.maxUsers} Users, {plan.maxCustomers.toLocaleString()} Customers
+                </p>
               </div>
-              
-              <p className="text-xs font-medium text-slate-500 bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">
-                {plan.limits}
-              </p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         {/* Tenants List */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
           <div className="p-5 border-b border-slate-800 flex justify-between items-center">
             <h2 className="text-lg font-bold text-white">Active Subscriptions</h2>
-            <button onClick={fetchTenants} className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-lg">
-              <RefreshCw className={clsx("w-4 h-4", loading && "animate-spin")} />
+            <button onClick={() => mutateTenants()} className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-lg">
+              <RefreshCw className={clsx("w-4 h-4", loadingTenants && "animate-spin")} />
             </button>
           </div>
           
@@ -99,7 +105,7 @@ export default function SaasBillingPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50">
-                {loading ? (
+                {loadingTenants ? (
                   <tr>
                     <td colSpan={4} className="px-5 py-8 text-center text-slate-500 text-sm">Loading subscriptions...</td>
                   </tr>
@@ -107,21 +113,15 @@ export default function SaasBillingPage() {
                   <tr>
                     <td colSpan={4} className="px-5 py-8 text-center text-slate-500 text-sm">No branches found.</td>
                   </tr>
-                ) : tenants.map((t) => (
+                ) : tenants.map((t: any) => (
                   <tr key={t.id} className="hover:bg-slate-800/20 transition-colors">
                     <td className="px-5 py-4">
                       <p className="text-sm font-bold text-white">{t.name}</p>
                       <p className="text-[11px] text-slate-500 font-mono mt-0.5">{t.slug}</p>
                     </td>
                     <td className="px-5 py-4">
-                      <span className={clsx(
-                        "text-[10px] uppercase font-black px-2.5 py-1 rounded-md tracking-wider border",
-                        t.plan === "FREE" ? "bg-slate-800 text-slate-400 border-slate-700" :
-                        t.plan === "BASIC" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
-                        t.plan === "PRO" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
-                        "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                      )}>
-                        {t.plan || "FREE"}
+                      <span className="text-[10px] uppercase font-black px-2.5 py-1 rounded-md tracking-wider border bg-indigo-500/10 text-indigo-400 border-indigo-500/20">
+                        {t.customPlan?.name || t.plan || "FREE"}
                       </span>
                     </td>
                     <td className="px-5 py-4">
@@ -135,8 +135,8 @@ export default function SaasBillingPage() {
                       </div>
                     </td>
                     <td className="px-5 py-4">
-                      <button className="text-xs font-bold text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg transition-colors">
-                        Change Plan
+                      <button className="text-xs font-bold text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
+                        <Edit className="w-3 h-3" /> Edit Sub
                       </button>
                     </td>
                   </tr>
@@ -146,6 +146,43 @@ export default function SaasBillingPage() {
           </div>
         </div>
       </div>
+
+      {showPlanModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-slate-900 rounded-2xl shadow-xl w-full max-w-md border border-slate-800 overflow-hidden animate-in zoom-in-95">
+            <div className="p-5 border-b border-slate-800 flex justify-between items-center">
+              <h2 className="text-lg font-bold text-white">Create Custom Plan</h2>
+              <button onClick={() => setShowPlanModal(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <form onSubmit={handleCreatePlan} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Plan Name</label>
+                <input required value={name} onChange={e => setName(e.target.value)} type="text" className="w-full text-sm px-3 py-2 border rounded-lg bg-slate-950 border-slate-800 text-white" placeholder="e.g. Diamond" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">Monthly Price ($)</label>
+                <input required value={price} onChange={e => setPrice(e.target.value)} type="number" className="w-full text-sm px-3 py-2 border rounded-lg bg-slate-950 border-slate-800 text-white" placeholder="299" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Max Users</label>
+                  <input required value={maxUsers} onChange={e => setMaxUsers(e.target.value)} type="number" className="w-full text-sm px-3 py-2 border rounded-lg bg-slate-950 border-slate-800 text-white" placeholder="100" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1">Max Customers</label>
+                  <input required value={maxCustomers} onChange={e => setMaxCustomers(e.target.value)} type="number" className="w-full text-sm px-3 py-2 border rounded-lg bg-slate-950 border-slate-800 text-white" placeholder="100000" />
+                </div>
+              </div>
+              <div className="pt-4 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowPlanModal(false)} className="px-4 py-2 text-sm font-semibold text-slate-400 hover:text-white rounded-lg">Cancel</button>
+                <button disabled={submitting} type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg flex items-center gap-2">
+                  {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
