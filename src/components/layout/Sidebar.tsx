@@ -154,12 +154,7 @@ function SidebarContent({ isOpen, onClose }: SidebarProps) {
         { title: "Database Backups", href: "/settings?tab=BACKUP" },
       ],
     },
-    {
-      title: "SaaS Admin",
-      href: "/saas",
-      icon: Building,
-      allowedRoles: ["SUPER_ADMIN"],
-    },
+
     {
       title: "My Profile",
       href: "/profile",
