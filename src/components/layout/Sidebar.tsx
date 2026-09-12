@@ -37,7 +37,7 @@ interface NavItem {
   icon: any;
   badge?: string;
   children?: { title: string; href: string; badge?: string }[];
-  allowedRoles?: ("ADMIN" | "MANAGER" | "RECOVERY_OFFICER")[];
+  allowedRoles?: ("ADMIN" | "MANAGER" | "RECOVERY_OFFICER" | "SUPER_ADMIN")[];
 }
 
 interface SidebarProps {
@@ -74,31 +74,31 @@ function SidebarContent({ isOpen, onClose }: SidebarProps) {
       title: "Dashboard",
       href: "/",
       icon: LayoutDashboard,
-      allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER"],
+      allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER", "SUPER_ADMIN"],
     },
     {
       title: "Customers",
       href: "/customers",
       icon: Users,
-      allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER"],
+      allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER", "SUPER_ADMIN"],
     },
     {
       title: "Installments",
       href: "/installments",
       icon: CreditCard,
-      allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER"],
+      allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER", "SUPER_ADMIN"],
     },
     {
       title: "Team Portfolio",
       href: "/team",
       icon: Briefcase,
       badge: "Team",
-      allowedRoles: ["ADMIN", "MANAGER"],
+      allowedRoles: ["ADMIN", "MANAGER", "SUPER_ADMIN"],
     },
     {
       title: "Recovery",
       icon: PhoneCall,
-      allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER"],
+      allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER", "SUPER_ADMIN"],
       children: [
         { title: "Recovery Workspace", href: "/recovery" },
         { title: "Send Reminders", href: "/recovery/send-reminders", badge: "Bulk" },
@@ -108,7 +108,7 @@ function SidebarContent({ isOpen, onClose }: SidebarProps) {
     {
       title: "WhatsApp",
       icon: QrCode,
-      allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER"],
+      allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER", "SUPER_ADMIN"],
       children: [
         { title: "Connection", href: "/whatsapp/connection" },
         { title: "Message History", href: "/whatsapp/message-history" },
@@ -118,7 +118,7 @@ function SidebarContent({ isOpen, onClose }: SidebarProps) {
     {
       title: "Imports",
       icon: FileSpreadsheet,
-      allowedRoles: ["ADMIN", "MANAGER"],
+      allowedRoles: ["ADMIN", "MANAGER", "SUPER_ADMIN"],
       children: [
         { title: "Import Excel", href: "/imports" },
         { title: "Import History", href: "/imports/history" },
@@ -128,24 +128,24 @@ function SidebarContent({ isOpen, onClose }: SidebarProps) {
       title: "Reports",
       href: "/reports",
       icon: BarChart3,
-      allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER"],
+      allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER", "SUPER_ADMIN"],
     },
     {
       title: "System Health",
       href: "/system-health",
       icon: Activity,
-      allowedRoles: ["ADMIN"],
+      allowedRoles: ["ADMIN", "SUPER_ADMIN"],
     },
     {
       title: "Users",
       href: "/users",
       icon: UserCheck,
-      allowedRoles: ["ADMIN", "MANAGER"],
+      allowedRoles: ["ADMIN", "MANAGER", "SUPER_ADMIN"],
     },
     {
       title: "Settings",
       icon: Settings,
-      allowedRoles: ["ADMIN"],
+      allowedRoles: ["ADMIN", "SUPER_ADMIN"],
       children: [
         { title: "Business Profile", href: "/settings?tab=BUSINESS" },
         { title: "WhatsApp Anti-Ban", href: "/settings?tab=WHATSAPP" },
@@ -153,6 +153,12 @@ function SidebarContent({ isOpen, onClose }: SidebarProps) {
         { title: "Reminder Schedules", href: "/settings?tab=RULES" },
         { title: "Database Backups", href: "/settings?tab=BACKUP" },
       ],
+    },
+    {
+      title: "SaaS Admin",
+      href: "/saas",
+      icon: Building,
+      allowedRoles: ["SUPER_ADMIN"],
     },
     {
       title: "My Profile",
