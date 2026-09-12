@@ -20,7 +20,7 @@ export async function PUT(req: NextRequest) {
   const { user, errorResponse } = await requireAuth(req);
   if (errorResponse) return errorResponse;
 
-  if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
+  if (user.role !== "ADMIN") {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
   }
 
