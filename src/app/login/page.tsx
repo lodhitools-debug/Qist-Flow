@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, User, Phone } from "lucide-react";
+import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, User, Phone, Building } from "lucide-react";
 
 function LoginForm() {
   const router = useRouter();
@@ -374,6 +374,18 @@ export default function LoginPage() {
         <div className="mt-6 text-center text-slate-500 text-xs flex items-center justify-center gap-1.5">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
           <span>Role-Based Authentication & Google OAuth Protected</span>
+        </div>
+
+        {/* Link to SaaS Admin Portal */}
+        <div className="mt-8 text-center">
+          <a 
+            href="/saas/login" 
+            className="inline-flex items-center gap-2 text-xs text-slate-400 hover:text-emerald-400 font-medium transition-colors bg-slate-900/50 border border-slate-800/50 px-4 py-2 rounded-full hover:bg-slate-800"
+          >
+            <Building className="w-3.5 h-3.5" />
+            <span>Go to Enterprise SaaS Portal</span>
+            <ArrowRight className="w-3 h-3" />
+          </a>
         </div>
       </div>
     </div>
