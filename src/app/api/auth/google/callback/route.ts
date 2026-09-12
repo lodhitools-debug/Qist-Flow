@@ -16,11 +16,11 @@ export async function GET(req: NextRequest) {
     const appOrigin = process.env.NEXT_PUBLIC_APP_URL || url.origin;
 
     if (error) {
-      return NextResponse.redirect(`${appOrigin}/login?error=${encodeURIComponent(error)}`);
+      return NextResponse.redirect(`${appOrigin}/saas/login?error=${encodeURIComponent(error)}`);
     }
 
     if (!code) {
-      return NextResponse.redirect(`${appOrigin}/login?error=missing_code`);
+      return NextResponse.redirect(`${appOrigin}/saas/login?error=missing_code`);
     }
 
     const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${url.origin}/api/auth/google/callback`;
 
     if (!clientId || !clientSecret) {
-      return NextResponse.redirect(`${appOrigin}/login?error=oauth_not_configured`);
+      return NextResponse.redirect(`${appOrigin}/saas/login?error=oauth_not_configured`);
     }
 
     // 1. Exchange code for access token
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 
     if (!tokenResponse.ok || !tokenData.access_token) {
       console.error("[Google OAuth Token Error]:", tokenData);
-      return NextResponse.redirect(`${appOrigin}/login?error=token_exchange_failed`);
+      return NextResponse.redirect(`${appOrigin}/saas/login?error=token_exchange_failed`);
     }
 
     // 2. Fetch User Profile from Google
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
 
     if (!userinfoResponse.ok || !profile.email) {
       console.error("[Google OAuth UserInfo Error]:", profile);
-      return NextResponse.redirect(`${appOrigin}/login?error=userinfo_failed`);
+      return NextResponse.redirect(`${appOrigin}/saas/login?error=userinfo_failed`);
     }
 
     const email = profile.email.toLowerCase().trim();
@@ -104,7 +104,11 @@ export async function GET(req: NextRequest) {
     }
 
     if (!user.isActive) {
-      return NextResponse.redirect(`${appOrigin}/login?error=account_deactivated`);
+      return NextResponse.redirect(`${appOrigin}/saas/login?error=account_deactivated`);
+    }
+
+    if (user.role !== "SUPER_ADMIN") {
+      return NextResponse.redirect(`${appOrigin}/saas/login?error=not_super_admin`);
     }
 
     // Update last login
@@ -133,7 +137,7 @@ export async function GET(req: NextRequest) {
     });
 
     // 5. Redirect to Dashboard with Session Cookie
-    const response = NextResponse.redirect(`${appOrigin}/`);
+    const response = NextResponse.redirect(`${appOrigin}/saas`);
 
     response.cookies.set({
       name: "qistflow_token",
@@ -149,6 +153,6 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     console.error("[Google OAuth Callback Exception]:", err);
     const appOrigin = process.env.NEXT_PUBLIC_APP_URL || "";
-    return NextResponse.redirect(`${appOrigin}/login?error=internal_error`);
+    return NextResponse.redirect(`${appOrigin}/saas/login?error=internal_error`);
   }
 }
