@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, User, Phone, Building } from "lucide-react";
+import Link from "next/link";
 
 function LoginForm() {
   const router = useRouter();
@@ -331,15 +332,15 @@ export default function LoginPage() {
         </div>
 
         {/* Link to SaaS Admin Portal */}
-        <div className="mt-8 text-center">
-          <a 
+        <div className="mt-8 text-center relative z-50">
+          <Link 
             href="/saas/login" 
-            className="inline-flex items-center gap-2 text-xs text-slate-400 hover:text-emerald-400 font-medium transition-colors bg-slate-900/50 border border-slate-800/50 px-4 py-2 rounded-full hover:bg-slate-800"
+            className="inline-flex items-center gap-2 text-xs text-slate-400 hover:text-emerald-400 font-medium transition-colors bg-slate-900/50 border border-slate-800/50 px-4 py-2 rounded-full hover:bg-slate-800 cursor-pointer"
           >
             <Building className="w-3.5 h-3.5" />
             <span>Go to Enterprise SaaS Portal</span>
             <ArrowRight className="w-3 h-3" />
-          </a>
+          </Link>
         </div>
       </div>
     </div>
