@@ -5,11 +5,11 @@ import { requireAuth } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const { session, errorResponse } = await requireAuth(req);
+  const { user, errorResponse } = await requireAuth(req);
   if (errorResponse) return errorResponse;
 
   const tenant = await prisma.tenant.findUnique({
-    where: { id: session.user.tenantId },
+    where: { id: user.tenantId },
     select: { waApiEndpoint: true, waApiToken: true, waPhoneNumberId: true, waAccountId: true }
   });
 
@@ -17,10 +17,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const { session, errorResponse } = await requireAuth(req);
+  const { user, errorResponse } = await requireAuth(req);
   if (errorResponse) return errorResponse;
 
-  if (session.user.role !== "ADMIN" && session.user.role !== "SUPER_ADMIN") {
+  if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
   }
 
@@ -28,7 +28,7 @@ export async function PUT(req: NextRequest) {
     const { waApiEndpoint, waApiToken, waPhoneNumberId, waAccountId } = await req.json();
 
     const tenant = await prisma.tenant.update({
-      where: { id: session.user.tenantId },
+      where: { id: user.tenantId },
       data: { waApiEndpoint, waApiToken, waPhoneNumberId, waAccountId },
     });
 
