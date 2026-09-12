@@ -426,6 +426,7 @@ export default function ExcelImportPage() {
 
   // Process response
   const [processing, setProcessing] = useState(false);
+  const [progressMsg, setProgressMsg] = useState<string>("");
   const [importResult, setImportResult] = useState<any>(null);
 
   const handleFileUpload = async (selectedFile: File) => {
@@ -491,28 +492,77 @@ export default function ExcelImportPage() {
   const handleProcessImport = async () => {
     try {
       setProcessing(true);
-      const res = await fetch("/api/imports/process", {
+      setProgressMsg("Initializing import session...");
+      
+      // Step 1: Initialize
+      const initRes = await fetch("/api/imports/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          initializeOnly: true,
           fileName,
           fileSize,
-          rows: rawRows,
+          totalRows: rawRows.length,
           mapping,
         }),
       });
 
-      const data = await safeJsonParse(res);
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Import processing failed");
+      const initData = await safeJsonParse(initRes);
+      if (!initRes.ok || !initData.success || !initData.importId) {
+        throw new Error(initData.error || "Failed to initialize import");
       }
-
-      setImportResult(data);
+      
+      const importId = initData.importId;
+      const CHUNK_SIZE = 50;
+      let totalNew = 0;
+      let totalUpdated = 0;
+      let totalErrors = 0;
+      
+      // Step 2: Process Chunks
+      for (let i = 0; i < rawRows.length; i += CHUNK_SIZE) {
+        const chunk = rawRows.slice(i, i + CHUNK_SIZE);
+        setProgressMsg(`Processing rows ${i + 1} to ${Math.min(i + CHUNK_SIZE, rawRows.length)} of ${rawRows.length}...`);
+        
+        const chunkRes = await fetch("/api/imports/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            importId,
+            fileName,
+            rows: chunk,
+            mapping,
+          }),
+        });
+        
+        const chunkData = await safeJsonParse(chunkRes);
+        if (!chunkRes.ok || !chunkData.success) {
+          throw new Error(chunkData.error || `Failed to process chunk at row ${i + 1}`);
+        }
+        
+        totalNew += chunkData.newRecords || 0;
+        totalUpdated += chunkData.updatedRecords || 0;
+        totalErrors += chunkData.errorCount || 0;
+      }
+      
+      setProgressMsg("Finalizing...");
+      
+      setImportResult({
+        success: true,
+        importId,
+        fileName,
+        totalRows: rawRows.length,
+        newRecords: totalNew,
+        updatedRecords: totalUpdated,
+        errorCount: totalErrors,
+        status: totalErrors > 0 ? "PARTIAL" : "SUCCESS",
+      });
+      
       setStep(4);
     } catch (err: any) {
       alert("Import Failed: " + err.message);
     } finally {
       setProcessing(false);
+      setProgressMsg("");
     }
   };
 
@@ -1311,7 +1361,7 @@ export default function ExcelImportPage() {
               ) : (
                 <CheckCircle2 className="w-4 h-4" />
               )}
-              <span>Confirm & Import All {validationSummary.validRows} Records</span>
+              <span>{processing && progressMsg ? progressMsg : `Confirm & Import All ${validationSummary.validRows} Records`}</span>
             </button>
           </div>
         </div>
