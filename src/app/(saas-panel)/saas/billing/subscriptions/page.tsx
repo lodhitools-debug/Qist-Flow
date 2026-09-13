@@ -1,23 +1,20 @@
-
 "use client";
-import { CreditCard, Search, ArrowUpRight } from "lucide-react";
+import useSWR from "swr";
+import { CreditCard, RefreshCw } from "lucide-react";
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 export default function SubscriptionsPage() {
+  const { data, isLoading } = useSWR("/api/saas/billing/subscriptions", fetcher);
+  const subscriptions = data?.subscriptions || [];
   return (
     <div className="flex-1 p-6 lg:p-8 space-y-6 bg-slate-50 dark:bg-slate-950">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold flex items-center gap-3"><CreditCard className="text-indigo-500"/> Subscriptions</h1>
-      </div>
-      <div className="bg-white dark:bg-slate-900 border rounded-2xl p-6 shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead className="text-slate-500 uppercase text-[11px] border-b">
-            <tr><th className="pb-3">Tenant</th><th className="pb-3">Plan</th><th className="pb-3">Status</th><th className="pb-3">Next Billing</th></tr>
-          </thead>
-          <tbody className="divide-y">
-            <tr className="h-14"><td className="font-bold">Lodhi Tools</td><td><span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-xs font-bold">PRO</span></td><td><span className="text-emerald-500 font-bold text-xs bg-emerald-50 px-2 py-1 rounded">ACTIVE</span></td><td>Oct 15, 2026</td></tr>
-            <tr className="h-14"><td className="font-bold">Acme Corp</td><td><span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">ESSENTIAL</span></td><td><span className="text-rose-500 font-bold text-xs bg-rose-50 px-2 py-1 rounded">PAST DUE</span></td><td>Sep 01, 2026</td></tr>
-          </tbody>
-        </table>
-      </div>
+      <h1 className="text-2xl font-bold flex items-center gap-3"><CreditCard className="text-indigo-500"/> Subscriptions</h1>
+      {isLoading ? <div className="flex justify-center p-10"><RefreshCw className="animate-spin text-slate-300 w-8 h-8"/></div> : 
+       subscriptions.length === 0 ? <div className="p-10 text-center border rounded-2xl bg-white shadow-sm">No active subscriptions found.</div> :
+       <div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
+        {subscriptions.map((s:any) => (
+          <div key={s.id} className="p-4 border-b font-bold">{s.tenant?.name} - {s.planVersion?.name}</div>
+        ))}
+      </div>}
     </div>
   );
 }

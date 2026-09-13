@@ -1,20 +1,20 @@
-
 "use client";
-import { Megaphone, Plus } from "lucide-react";
+import useSWR from "swr";
+import { Megaphone, RefreshCw } from "lucide-react";
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 export default function AnnouncementsPage() {
+  const { data, isLoading } = useSWR("/api/saas/support/announcements", fetcher);
+  const announcements = data?.announcements || [];
   return (
     <div className="flex-1 p-6 lg:p-8 space-y-6 bg-slate-50 dark:bg-slate-950">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold flex items-center gap-3"><Megaphone className="text-amber-500"/> Announcements</h1>
-        <button className="bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4"/> New Broadcast</button>
-      </div>
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border shadow-sm">
-        <div className="border-b pb-4 mb-4">
-          <span className="text-xs text-slate-500">Published: Sep 12, 2026</span>
-          <h3 className="font-bold text-lg mt-1">V2 Upgrade Successfully Deployed</h3>
-          <p className="text-slate-600 text-sm mt-2">All tenants have been migrated to the new infrastructure with zero downtime.</p>
-        </div>
-      </div>
+      <h1 className="text-2xl font-bold flex items-center gap-3"><Megaphone className="text-amber-500"/> Announcements</h1>
+      {isLoading ? <div className="flex justify-center p-10"><RefreshCw className="animate-spin text-slate-300 w-8 h-8"/></div> : 
+       announcements.length === 0 ? <div className="p-10 text-center border rounded-2xl bg-white shadow-sm">No announcements found.</div> :
+       <div className="grid gap-4">
+        {announcements.map((a:any) => (
+          <div key={a.id} className="bg-white p-5 rounded-2xl border shadow-sm"><h3 className="font-bold">{a.title}</h3><p className="text-sm text-slate-500">{a.content}</p></div>
+        ))}
+      </div>}
     </div>
   );
 }
