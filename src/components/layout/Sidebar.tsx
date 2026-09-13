@@ -149,6 +149,7 @@ function SidebarContent({ isOpen, onClose }: SidebarProps) {
       children: [
         { title: "Business Profile", href: "/settings?tab=BUSINESS" },
         { title: "WhatsApp Anti-Ban", href: "/settings?tab=WHATSAPP" },
+        { title: "WhatsApp Cloud API", href: "/settings/whatsapp-api", badge: "Official" },
         { title: "Guarantor Escalation", href: "/settings?tab=ESCALATION" },
         { title: "Reminder Schedules", href: "/settings?tab=RULES" },
         { title: "Database Backups", href: "/settings?tab=BACKUP" },

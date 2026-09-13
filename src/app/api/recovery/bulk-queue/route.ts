@@ -13,12 +13,14 @@ export async function POST(req: NextRequest) {
     }
 
     const payload = items.map((item) => ({
-      recipientPhone: item.primaryPhone,
+      recipientPhone: item.recipientPhone,
+      recipientName: item.recipientName,
+      recipientType: item.recipientType || "CUSTOMER",
       messageText: item.messageText,
       customerId: item.customerId,
       installmentId: item.installmentId,
       templateId: item.templateId,
-      messageType: "REMINDER" as const,
+      messageType: item.recipientType === "GUARANTOR_1" ? "GUARANTOR_FIRST_NOTICE" : "REMINDER" as const,
       dueDate: item.dueDate,
       priority: item.daysOverdue >= 7 ? 3 : 1,
     }));

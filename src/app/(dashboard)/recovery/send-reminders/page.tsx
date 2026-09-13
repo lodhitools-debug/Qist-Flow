@@ -43,9 +43,9 @@ function BulkReminderWizardContent() {
   // Step Control (1: Select Customers, 2: Choose Template & Preview, 3: Confirmation / Dispatched)
   const [step, setStep] = useState<number>(1);
 
-  // Filter State
   const [filterType, setFilterType] = useState(initialFilter);
   const [branch, setBranch] = useState("ALL");
+  const [recipientType, setRecipientType] = useState("CUSTOMER"); // CUSTOMER, GUARANTOR, BOTH
   const [targets, setTargets] = useState<any[]>([]);
   const [loadingTargets, setLoadingTargets] = useState(true);
 
@@ -125,22 +125,48 @@ function BulkReminderWizardContent() {
     try {
       setSubmitting(true);
 
-      const items = selectedList.map((t) => ({
-        customerId: t.customerId,
-        installmentId: t.installmentId,
-        primaryPhone: t.primaryPhone,
-        messageText: t.messageText || t.previewMessage,
-        dueDate: t.dueDate,
-        daysOverdue: t.daysOverdue,
-        templateId: selectedTemplateId,
-      }));
+      const items: any[] = [];
+      selectedList.forEach((t) => {
+        const baseItem = {
+          customerId: t.customerId,
+          installmentId: t.installmentId,
+          dueDate: t.dueDate,
+          daysOverdue: t.daysOverdue,
+          templateId: selectedTemplateId,
+          messageText: t.messageText || t.previewMessage,
+        };
+
+        if (recipientType === "CUSTOMER" || recipientType === "BOTH") {
+          items.push({
+            ...baseItem,
+            recipientPhone: t.primaryPhone,
+            recipientName: t.customerName,
+            recipientType: "CUSTOMER"
+          });
+        }
+        
+        if ((recipientType === "GUARANTOR" || recipientType === "BOTH") && t.guarantor1Phone) {
+          items.push({
+            ...baseItem,
+            recipientPhone: t.guarantor1Phone,
+            recipientName: t.guarantor1Name || "Guarantor",
+            recipientType: "GUARANTOR_1"
+          });
+        }
+      });
+
+      if (items.length === 0) {
+        alert("No valid phone numbers found for the selected recipient type.");
+        setSubmitting(false);
+        return;
+      }
 
       const res = await fetch("/api/recovery/bulk-queue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items,
-          batchLabel: `Bulk ${filterType} Campaign`,
+          batchLabel: `Bulk ${filterType} Campaign (${recipientType})`,
         }),
       });
 
@@ -352,17 +378,28 @@ function BulkReminderWizardContent() {
                 </p>
               </div>
 
-              <select
-                value={selectedTemplateId}
-                onChange={(e) => setSelectedTemplateId(e.target.value)}
-                className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 dark:text-slate-200"
-              >
-                {templates.map((tmpl) => (
-                  <option key={tmpl.id} value={tmpl.id}>
-                    {tmpl.name} ({tmpl.language})
-                  </option>
-                ))}
-              </select>
+              <div className="flex gap-3">
+                <select
+                  value={recipientType}
+                  onChange={(e) => setRecipientType(e.target.value)}
+                  className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3.5 py-2 text-xs font-bold text-emerald-800 dark:text-emerald-300"
+                >
+                  <option value="CUSTOMER">Send to Customer Only</option>
+                  <option value="GUARANTOR">Send to Guarantor Only</option>
+                  <option value="BOTH">Send to Both</option>
+                </select>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 dark:text-slate-200"
+                >
+                  {templates.map((tmpl) => (
+                    <option key={tmpl.id} value={tmpl.id}>
+                      {tmpl.name} ({tmpl.language})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Anti-ban Throttling Disclaimer */}
@@ -384,18 +421,37 @@ function BulkReminderWizardContent() {
               {selectedList.slice(0, 8).map((cust) => (
                 <div
                   key={cust.customerId}
-                  className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-2 text-xs"
+                  className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-2 text-xs flex flex-col justify-between"
                 >
-                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                    <span className="font-bold text-slate-800 dark:text-slate-200">
-                      {cust.customerName} ({formatDisplayPhone(cust.primaryPhone)})
-                    </span>
-                    <span className="font-mono text-[10px] text-slate-400">
-                      Acc: {cust.account}
-                    </span>
+                  <div>
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2 mb-2">
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {cust.customerName}
+                      </span>
+                      <span className="font-mono text-[10px] text-slate-400">
+                        Acc: {cust.account}
+                      </span>
+                    </div>
+                    
+                    {(recipientType === "CUSTOMER" || recipientType === "BOTH") && (
+                      <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2 rounded text-xs mb-1">
+                        <span className="text-slate-500">Customer:</span>
+                        <span className="font-mono font-bold">{formatDisplayPhone(cust.primaryPhone)}</span>
+                      </div>
+                    )}
+
+                    {(recipientType === "GUARANTOR" || recipientType === "BOTH") && (
+                      <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 p-2 rounded text-xs">
+                        <span className="text-amber-700 dark:text-amber-500">Guarantor ({cust.guarantor1Name || 'N/A'}):</span>
+                        <span className="font-mono font-bold text-amber-700 dark:text-amber-500">
+                          {cust.guarantor1Phone ? formatDisplayPhone(cust.guarantor1Phone) : "No Phone"}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-[11px] text-slate-700 dark:text-slate-300 whitespace-pre-line bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg">
-                    {cust.previewMessage}
+                  
+                  <p className="text-[11px] text-slate-700 dark:text-slate-300 whitespace-pre-line bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg mt-2">
+                    {cust.messageText}
                   </p>
                 </div>
               ))}

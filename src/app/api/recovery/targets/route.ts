@@ -91,16 +91,20 @@ export async function GET(req: NextRequest) {
           ? Math.floor((todayStart.getTime() - inst.dueDate.getTime()) / (1000 * 60 * 60 * 24))
           : 0;
 
+      const monthsOverdue = Math.floor(daysOverdue / 30) || 1;
+
       // Render personalized message
       let messageText = "";
       if (template) {
         messageText = renderTemplate(template.body, {
           customerName: cust.customerName,
+          guarantorName: cust.guarantor1Name || "Zamanat-daar",
           account: cust.account,
           emi: inst.emi,
           balance: inst.balance,
           dueDate: inst.dueDate ? new Date(inst.dueDate).toLocaleDateString("en-PK") : "N/A",
           daysOverdue,
+          monthsOverdue,
           productName: cust.productName || "Product",
           branch: cust.branch,
         });
@@ -115,11 +119,14 @@ export async function GET(req: NextRequest) {
         account: cust.account,
         customerName: cust.customerName,
         primaryPhone: cust.primaryPhone,
+        guarantor1Name: cust.guarantor1Name,
+        guarantor1Phone: cust.guarantor1Phone,
         branch: cust.branch,
         emi: inst.emi,
         balance: inst.balance,
         dueDate: inst.dueDate,
         daysOverdue,
+        monthsOverdue,
         status: evalResult.status,
         messageText,
         templateId: template?.id || null,

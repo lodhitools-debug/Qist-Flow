@@ -1,5 +1,6 @@
 import { prisma } from "../prisma";
 import { waSessionManager } from "./session-manager";
+import { WhatsAppCloudProvider } from "./cloud-provider";
 import {
   generateMessageIdempotencyKey,
   generateGuarantorMessageKey,
@@ -200,52 +201,72 @@ export async function processQueueWorker(maxBatchSize: number = 10): Promise<{
   const maxDelay = parseInt(process.env.WHATSAPP_RATE_LIMIT_MAX_DELAY_MS || "6000", 10);
 
   for (const item of pendingItems) {
-    // Determine which user's WhatsApp socket should dispatch this message
-    let senderId = item.senderUserId;
-
-    if (!senderId && item.customerId) {
-      const cust = await prisma.customer.findUnique({
-        where: { id: item.customerId },
-        select: { assignedToUserId: true, assignedManagerId: true },
-      });
-      senderId = cust?.assignedToUserId || cust?.assignedManagerId || null;
-    }
-
-    // If still no senderId, check for any connected admin session
-    if (!senderId) {
-      const adminSession = await prisma.whatsAppSession.findFirst({
-        where: { status: "CONNECTED" },
-        select: { userId: true },
-      });
-      senderId = adminSession?.userId || null;
-    }
-
-    if (!senderId) {
-      // No active WhatsApp sender available
-      continue;
-    }
-
-    const session = waSessionManager.getSession(senderId);
-    if (!session.isConnected()) {
-      // Officer's WhatsApp is not currently connected, skip without failing other officers
-      continue;
-    }
-
-    // Mark as SENDING
-    await prisma.messageQueue.update({
-      where: { id: item.id },
-      data: { status: "SENDING" },
+    // Determine the WhatsApp provider for this Tenant
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: item.tenantId },
+      select: { waApiToken: true, waPhoneNumberId: true },
     });
 
-    const isManualHighPriority = item.priority >= 100;
-    const delayMs = isManualHighPriority
-      ? 800
-      : Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+    let sendResult;
+    let usedSenderId = null;
 
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    if (tenant?.waApiToken && tenant?.waPhoneNumberId) {
+      // 1. Use Cloud API (WhatsApp Business) if configured
+      const cloudProvider = new WhatsAppCloudProvider(tenant.waPhoneNumberId, tenant.waApiToken);
+      
+      // Mark as SENDING
+      await prisma.messageQueue.update({
+        where: { id: item.id },
+        data: { status: "SENDING" },
+      });
 
-    // Send via specific user's WhatsApp socket
-    const sendResult = await session.sendDirectMessage(item.recipientPhone, item.messageText);
+      sendResult = await cloudProvider.sendMessage({
+        recipientPhone: item.recipientPhone,
+        messageText: item.messageText,
+        customerId: item.customerId || undefined,
+      });
+
+    } else {
+      // 2. Fallback to Baileys (Personal WhatsApp Scanning)
+      let senderId = item.senderUserId;
+
+      if (!senderId && item.customerId) {
+        const cust = await prisma.customer.findUnique({
+          where: { id: item.customerId },
+          select: { assignedToUserId: true, assignedManagerId: true },
+        });
+        senderId = cust?.assignedToUserId || cust?.assignedManagerId || null;
+      }
+
+      if (!senderId) {
+        const adminSession = await prisma.whatsAppSession.findFirst({
+          where: { status: "CONNECTED" },
+          select: { userId: true },
+        });
+        senderId = adminSession?.userId || null;
+      }
+
+      if (!senderId) continue;
+
+      const session = waSessionManager.getSession(senderId);
+      if (!session.isConnected()) continue;
+
+      usedSenderId = senderId;
+
+      await prisma.messageQueue.update({
+        where: { id: item.id },
+        data: { status: "SENDING" },
+      });
+
+      const isManualHighPriority = item.priority >= 100;
+      const delayMs = isManualHighPriority
+        ? 800
+        : Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+      sendResult = await session.sendDirectMessage(item.recipientPhone, item.messageText);
+    }
 
     if (sendResult.success) {
       sentCount++;

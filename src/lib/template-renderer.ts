@@ -8,6 +8,7 @@ export interface TemplateContext {
   balance?: number;
   dueDate?: Date | string | null;
   daysOverdue?: number;
+  monthsOverdue?: number;
   branch?: string;
   recoveryPerson?: string;
   lastPaymentAmount?: number;
@@ -22,6 +23,7 @@ export const TEMPLATE_VARIABLES = [
   { token: "{{balance}}", label: "Remaining Balance", sample: "10,400" },
   { token: "{{due_date}}", label: "Due Date", sample: "05-Sep-2026" },
   { token: "{{days_overdue}}", label: "Days Overdue", sample: "3" },
+  { token: "{{months_overdue}}", label: "Months Overdue", sample: "1" },
   { token: "{{branch}}", label: "Branch", sample: "QBLAN" },
   { token: "{{recovery_person}}", label: "Recovery Officer", sample: "Ghulam Ahmed" },
   { token: "{{last_payment_amount}}", label: "Last Payment Amount", sample: "2,900" },
@@ -60,6 +62,7 @@ export function renderTemplate(templateString: string, context: TemplateContext)
     "{{balance}}": formatCurrency(context.balance),
     "{{due_date}}": dueDateStr,
     "{{days_overdue}}": String(context.daysOverdue || 0),
+    "{{months_overdue}}": String(context.monthsOverdue || 0),
     "{{branch}}": context.branch || "QistBazar",
     "{{recovery_person}}": context.recoveryPerson || "Recovery Department",
     "{{last_payment_amount}}": formatCurrency(context.lastPaymentAmount),
@@ -134,7 +137,7 @@ Recovery Team ({{recovery_person}})`,
 
 Assalam-o-Alaikum {{customer_name}},
 
-Aap ki installment Rs. {{emi}} guzashta {{days_overdue}} din se overdue hai (Due Date: {{due_date}}).
+Aap ki installment Rs. {{emi}} guzashta {{months_overdue}} mahine se overdue hai (Due Date: {{due_date}}).
 
 Total Remaining Balance: Rs. {{balance}}
 Barah-e-karam aaj hi payment process karein taake recovery team ki taraf se verification call ya visit se bacha ja sake.
@@ -152,7 +155,7 @@ Recovery Officer: {{recovery_person}}`,
 
 Muazzaz {{customer_name}},
 
-Aap ka account ({{account}}) pichle {{days_overdue}} din se unpaid hai.
+Aap ka account ({{account}}) pichle {{months_overdue}} mahine se unpaid hai.
 Payable Amount: Rs. {{emi}}
 Total Balance: Rs. {{balance}}
 
@@ -206,7 +209,7 @@ QistFlow Recovery Team ({{branch}})`,
 
 Assalam-o-Alaikum {{guarantor_name}},
 
-{{customer_name}} ke account ({{account}}) ki installment pichle {{days_overdue}} din se unpaid hai.
+{{customer_name}} ke account ({{account}}) ki installment pichle {{months_overdue}} mahine se unpaid hai.
 
 Aap is account ke mohtaram guarantor hain. Hum customer se rabta karne ki koshish kar rahe hain. Barah-e-karam fori tor par customer se baat kar ke payment schedule confirm karwayein.
 
@@ -223,7 +226,7 @@ QistFlow Recovery Department`,
 
 Muazzaz {{guarantor_name}},
 
-{{customer_name}} (Account: {{account}}) ka account {{days_overdue}} din se overdue chal raha hai aur mutaddad koshishon ke bawajood payment masool nahi hui.
+{{customer_name}} (Account: {{account}}) ka account {{months_overdue}} mahine se overdue chal raha hai aur mutaddad koshishon ke bawajood payment masool nahi hui.
 
 Bataur Guarantor aap ki zimadari hai ke customer se rabta kar ke mamla fori hal karwayein.
 
