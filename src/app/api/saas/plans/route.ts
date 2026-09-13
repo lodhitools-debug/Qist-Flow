@@ -23,9 +23,9 @@ export async function POST(req: Request) {
         maxBranches: parseInt(body.maxBranches),
         maxWaAccounts: parseInt(body.maxWaAccounts),
         maxMonthlyMessages: parseInt(body.maxMonthlyMessages),
-        isTrial: body.isTrial || false,
+        trialDays: body.trialDays ? parseInt(body.trialDays) : 0,
         isRecommended: body.isRecommended || false,
-        isActive: true
+        status: "ACTIVE"
       }
     });
     return NextResponse.json({ plan });

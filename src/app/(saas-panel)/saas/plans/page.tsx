@@ -55,9 +55,9 @@ export default function SaaSPlansPage() {
               <div className="flex justify-between items-start mb-4">
                 <span className={clsx(
                   "px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider",
-                  plan.isTrial ? "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                  plan.trialDays > 0 ? "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
                 )}>
-                  {plan.isTrial ? "TRIAL" : "RECURRING"}
+                  {plan.trialDays > 0 ? "TRIAL" : "RECURRING"}
                 </span>
                 <div className="flex gap-1.5">
                   <button className="p-1.5 text-slate-400 hover:text-indigo-500 bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-500/10 rounded-lg"><Edit className="w-4 h-4" /></button>
