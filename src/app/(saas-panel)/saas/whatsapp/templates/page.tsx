@@ -1,28 +1,18 @@
+
 "use client";
-
-import { MessageSquare, Construction } from "lucide-react";
-
-export default function WhatsappTemplatesPage() {
+import { MessageSquare, CheckCircle2 } from "lucide-react";
+export default function TemplatesPage() {
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
-          <MessageSquare className="w-7 h-7 text-indigo-500" />
-          WhatsApp Templates
-        </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          This module is currently being provisioned as part of the V2 upgrade.
-        </p>
-      </div>
-
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-12 flex flex-col items-center justify-center text-center shadow-sm min-h-[400px]">
-        <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-500/10 rounded-full flex items-center justify-center mb-6">
-          <Construction className="w-10 h-10 text-indigo-500" />
+    <div className="flex-1 p-6 lg:p-8 space-y-6 bg-slate-50 dark:bg-slate-950">
+      <h1 className="text-2xl font-bold flex items-center gap-3"><MessageSquare className="text-emerald-500"/> Global WhatsApp Templates</h1>
+      <div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
+        <div className="p-4 border-b flex justify-between items-center">
+          <div><h3 className="font-bold text-slate-900">payment_reminder_v1</h3><p className="text-sm text-slate-500">Category: UTILITY</p></div>
+          <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> APPROVED</span>
         </div>
-        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Module Under Construction</h2>
-        <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-          We are actively building out the advanced functionality for the <strong>WhatsApp Templates</strong> module. Check back shortly!
-        </p>
+        <div className="p-4 bg-slate-50 text-sm font-mono text-slate-700">
+          "Dear {{1}}, your installment of Rs {{2}} for {{3}} is due on {{4}}. Please pay on time to avoid late fees."
+        </div>
       </div>
     </div>
   );

@@ -1,28 +1,25 @@
+
 "use client";
-
-import { Shield, Construction } from "lucide-react";
-
-export default function UsersRolesPage() {
+import { Shield, Check } from "lucide-react";
+export default function RolesPage() {
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
-          <Shield className="w-7 h-7 text-indigo-500" />
-          Roles & Permissions
-        </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          This module is currently being provisioned as part of the V2 upgrade.
-        </p>
-      </div>
-
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-12 flex flex-col items-center justify-center text-center shadow-sm min-h-[400px]">
-        <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-500/10 rounded-full flex items-center justify-center mb-6">
-          <Construction className="w-10 h-10 text-indigo-500" />
+    <div className="flex-1 p-6 lg:p-8 space-y-6 bg-slate-50 dark:bg-slate-950">
+      <h1 className="text-2xl font-bold flex items-center gap-3"><Shield className="text-purple-500"/> Roles & Permissions</h1>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white border rounded-2xl p-6 shadow-sm">
+          <h3 className="font-bold text-lg border-b pb-3 mb-3 text-purple-700">SUPER_ADMIN</h3>
+          <ul className="space-y-2 text-sm text-slate-700">
+            <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500"/> Full System Access</li>
+            <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500"/> Manage Tenants & Billing</li>
+          </ul>
         </div>
-        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Module Under Construction</h2>
-        <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-          We are actively building out the advanced functionality for the <strong>Roles & Permissions</strong> module. Check back shortly!
-        </p>
+        <div className="bg-white border rounded-2xl p-6 shadow-sm">
+          <h3 className="font-bold text-lg border-b pb-3 mb-3 text-blue-700">SUPPORT_AGENT</h3>
+          <ul className="space-y-2 text-sm text-slate-700">
+            <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500"/> View Tenants</li>
+            <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500"/> Manage Support Tickets</li>
+          </ul>
+        </div>
       </div>
     </div>
   );
