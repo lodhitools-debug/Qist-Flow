@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 import { Users, Plus, Shield, Search, Key, Edit, Trash2, CheckCircle2, AlertTriangle, RefreshCw } from "lucide-react";
 import Link from "next/link";
@@ -8,8 +9,42 @@ import clsx from "clsx";
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 export default function SaaSUsersPage() {
-  const { data, error, isLoading } = useSWR("/api/saas/users", fetcher);
+  const { data, error, isLoading, mutate } = useSWR("/api/saas/users", fetcher);
   const users = data?.users || [];
+
+  const [showModal, setShowModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [globalRole, setGlobalRole] = useState("SAAS_ADMIN");
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await fetch("/api/saas/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password, globalRole }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create user");
+      
+      mutate();
+      setShowModal(false);
+      setName("");
+      setEmail("");
+      setPassword("");
+    } catch (err: any) {
+      setFormError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 space-y-6 bg-slate-50 dark:bg-slate-950">
@@ -25,7 +60,7 @@ export default function SaaSUsersPage() {
             Manage global administrators, support agents, and their access levels.
           </p>
         </div>
-        <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-indigo-500/20 transition-all">
+        <button onClick={() => setShowModal(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-indigo-500/20 transition-all">
           <Plus className="w-4 h-4" />
           <span>Invite SaaS User</span>
         </button>
@@ -156,6 +191,52 @@ export default function SaaSUsersPage() {
             )}
           </div>
         </>
+      )}
+
+      {/* Invite User Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in-95">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Invite SaaS User</h2>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <form onSubmit={handleCreate} className="p-5 space-y-4">
+              {formError && (
+                <div className="p-3 bg-rose-50 text-rose-600 text-xs rounded-lg border border-rose-200">{formError}</div>
+              )}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Full Name</label>
+                <input required value={name} onChange={e => setName(e.target.value)} type="text" className="w-full text-sm px-3 py-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="Jane Doe" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Email Address</label>
+                <input required value={email} onChange={e => setEmail(e.target.value)} type="email" className="w-full text-sm px-3 py-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="jane@qistflow.com" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Temporary Password</label>
+                <input required value={password} onChange={e => setPassword(e.target.value)} type="text" className="w-full text-sm px-3 py-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="SecurePass123!" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Global Role</label>
+                <select required value={globalRole} onChange={e => setGlobalRole(e.target.value)} className="w-full text-sm px-3 py-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700">
+                  <option value="SAAS_ADMIN">SaaS Admin</option>
+                  <option value="SUPER_ADMIN">Super Admin</option>
+                  <option value="SUPPORT_AGENT">Support Agent</option>
+                  <option value="BILLING_MANAGER">Billing Manager</option>
+                </select>
+              </div>
+              
+              <div className="pt-4 flex justify-end gap-3 border-t border-slate-100 dark:border-slate-800 mt-5">
+                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+                <button disabled={submitting} type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg flex items-center gap-2">
+                  {submitting && <RefreshCw className="w-4 h-4 animate-spin" />}
+                  Send Invite
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

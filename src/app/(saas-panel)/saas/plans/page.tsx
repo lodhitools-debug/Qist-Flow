@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 import { CreditCard, Plus, Edit, Copy, RefreshCw, AlertTriangle } from "lucide-react";
 import clsx from "clsx";
@@ -7,8 +8,56 @@ import clsx from "clsx";
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 export default function SaaSPlansPage() {
-  const { data, error, isLoading } = useSWR("/api/saas/plans", fetcher);
+  const { data, error, isLoading, mutate } = useSWR("/api/saas/plans", fetcher);
   const plans = data?.plans || [];
+
+  const [showModal, setShowModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const [name, setName] = useState("");
+  const [monthlyPrice, setMonthlyPrice] = useState("");
+  const [trialDays, setTrialDays] = useState("");
+  const [maxUsers, setMaxUsers] = useState("10");
+  const [maxBranches, setMaxBranches] = useState("1");
+  const [maxWaAccounts, setMaxWaAccounts] = useState("1");
+  const [maxMonthlyMessages, setMaxMonthlyMessages] = useState("5000");
+  const [isRecommended, setIsRecommended] = useState(false);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await fetch("/api/saas/plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          monthlyPrice,
+          trialDays,
+          maxUsers,
+          maxBranches,
+          maxWaAccounts,
+          maxMonthlyMessages,
+          isRecommended
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create plan");
+      
+      mutate();
+      setShowModal(false);
+      setName("");
+      setMonthlyPrice("");
+      setTrialDays("");
+      setIsRecommended(false);
+    } catch (err: any) {
+      setFormError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 space-y-6 bg-slate-50 dark:bg-slate-950">
@@ -22,7 +71,7 @@ export default function SaaSPlansPage() {
             Configure subscription tiers, feature flags, and usage limits.
           </p>
         </div>
-        <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-indigo-500/20 transition-all">
+        <button onClick={() => setShowModal(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-indigo-500/20 transition-all">
           <Plus className="w-4 h-4" />
           <span>Create New Plan</span>
         </button>
@@ -82,6 +131,66 @@ export default function SaaSPlansPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Create Plan Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-lg border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in-95">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Create New Plan</h2>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <form onSubmit={handleCreate} className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+              {formError && (
+                <div className="p-3 bg-rose-50 text-rose-600 text-xs rounded-lg border border-rose-200">{formError}</div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Plan Name</label>
+                  <input required value={name} onChange={e => setName(e.target.value)} type="text" className="w-full text-sm px-3 py-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="e.g. Pro Tier" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Monthly Price (PKR)</label>
+                  <input required value={monthlyPrice} onChange={e => setMonthlyPrice(e.target.value)} type="number" min="0" className="w-full text-sm px-3 py-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="5000" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Trial Days</label>
+                  <input value={trialDays} onChange={e => setTrialDays(e.target.value)} type="number" min="0" className="w-full text-sm px-3 py-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" placeholder="14" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Max Admin Users</label>
+                  <input required value={maxUsers} onChange={e => setMaxUsers(e.target.value)} type="number" min="1" className="w-full text-sm px-3 py-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Max Branches</label>
+                  <input required value={maxBranches} onChange={e => setMaxBranches(e.target.value)} type="number" min="1" className="w-full text-sm px-3 py-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Max WhatsApp Accounts</label>
+                  <input required value={maxWaAccounts} onChange={e => setMaxWaAccounts(e.target.value)} type="number" min="0" className="w-full text-sm px-3 py-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Monthly Messaging Limit</label>
+                  <input required value={maxMonthlyMessages} onChange={e => setMaxMonthlyMessages(e.target.value)} type="number" min="0" className="w-full text-sm px-3 py-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700" />
+                </div>
+                <div className="sm:col-span-2 pt-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    <input type="checkbox" checked={isRecommended} onChange={e => setIsRecommended(e.target.checked)} className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500" />
+                    Mark as Recommended Plan
+                  </label>
+                </div>
+              </div>
+              <div className="pt-4 flex justify-end gap-3 border-t border-slate-100 dark:border-slate-800 mt-5">
+                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+                <button disabled={submitting} type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg flex items-center gap-2">
+                  {submitting && <RefreshCw className="w-4 h-4 animate-spin" />}
+                  Create Plan
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
