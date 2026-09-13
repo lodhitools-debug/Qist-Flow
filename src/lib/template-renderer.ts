@@ -83,157 +83,79 @@ export function renderTemplate(templateString: string, context: TemplateContext)
  */
 export const DEFAULT_TEMPLATES = [
   {
-    slug: "before-due-roman-urdu",
-    name: "1 Day Before Due (Roman Urdu)",
-    type: "BEFORE_DUE",
-    language: "ROMAN_URDU",
-    body: `Assalam-o-Alaikum {{customer_name}},
-
-Yeh ek yad-dihani paigham hai ke aap ki Rs. {{emi}} mahana qist ki due date kal ({{due_date}}) hai (Account: {{account}}).
-
-Barah-e-karam waqt par payment kar ke late fee aur kisi bhi pareshani se bachein.
-
-Shukriya,
-{{recovery_person}}
-QistBazar / QistFlow`,
-  },
-  {
-    slug: "due-today-roman-urdu",
-    name: "Due Today Reminder (Roman Urdu)",
-    type: "DUE_TODAY",
-    language: "ROMAN_URDU",
-    body: `Assalam-o-Alaikum {{customer_name}},
-
-Aap ki Rs. {{emi}} qist ki due date AAJ ({{due_date}}) hai (Account: {{account}}).
-
-Barah-e-karam aaj hi apni payment clear kar dein taake aap ka record behtar rahe.
-
-Remaining Balance: Rs. {{balance}}
-Shukriya,
-{{recovery_person}}
-QistBazar`,
-  },
-  {
-    slug: "overdue-1d-roman-urdu",
-    name: "1 Day Overdue (Roman Urdu)",
+    slug: "customer-urgent-recovery",
+    name: "Customer Urgent Recovery Notice",
     type: "OVERDUE",
-    language: "ROMAN_URDU",
-    body: `Muazzaz {{customer_name}},
-
-Aap ki Rs. {{emi}} qist ki due date {{due_date}} guzar chuki hai aur payment abhi tak receive nahi hui.
-
-Barah-e-karam fori tor par payment ada karein. Agar aap payment kar chuke hain to receipt share farmayein.
-
-Account: {{account}}
-Shukriya,
-Recovery Team ({{recovery_person}})`,
-  },
-  {
-    slug: "overdue-3d-roman-urdu",
-    name: "3 Days Overdue (Roman Urdu)",
-    type: "OVERDUE",
-    language: "ROMAN_URDU",
-    body: `Notice - Installment Overdue
-
-Assalam-o-Alaikum {{customer_name}},
-
-Aap ki installment Rs. {{emi}} guzashta {{months_overdue}} mahine se overdue hai (Due Date: {{due_date}}).
-
-Total Remaining Balance: Rs. {{balance}}
-Barah-e-karam aaj hi payment process karein taake recovery team ki taraf se verification call ya visit se bacha ja sake.
-
-Account: {{account}}
-Branch: {{branch}}
-Recovery Officer: {{recovery_person}}`,
-  },
-  {
-    slug: "overdue-7d-roman-urdu",
-    name: "7 Days Overdue - Urgent Notice (Roman Urdu)",
-    type: "OVERDUE",
-    language: "ROMAN_URDU",
+    language: "URDU_AND_ROMAN",
     body: `URGENT RECOVERY NOTICE
-
-Muazzaz {{customer_name}},
-
-Aap ka account ({{account}}) pichle {{months_overdue}} mahine se unpaid hai.
-Payable Amount: Rs. {{emi}}
-Total Balance: Rs. {{balance}}
-
-Kripya fori tor par branch visit karein ya payment online bhej kar confirmation dein. Legal/Guarantor verification se pehle apna account regularize karein.
-
-Recovery Officer: {{recovery_person}}
-Branch: {{branch}}`,
-  },
-  {
-    slug: "payment-received-roman-urdu",
-    name: "Payment Confirmation (Roman Urdu)",
-    type: "PAYMENT_RECEIVED",
-    language: "ROMAN_URDU",
-    body: `Assalam-o-Alaikum {{customer_name}},
-
-Aap ki Rs. {{last_payment_amount}} payment successfully receive ho gayi hai.
-
-Aap ka remaining balance Rs. {{balance}} hai.
-Waqt par payment karne ka shukriya!
-
-Account: {{account}}
-QistBazar Team`,
-  },
-  // Guarantor Escalation Templates
-  {
-    slug: "guarantor-first-notice-roman-urdu",
-    name: "Guarantor First Notice (Level 1/2)",
-    type: "GUARANTOR_FIRST_NOTICE",
-    language: "ROMAN_URDU",
-    body: `Assalam-o-Alaikum {{guarantor_name}},
-
-Yeh paigham aap ko bataur Zamanat-daar (Guarantor) bhaija ja raha hai.
-
-Customer: {{customer_name}}
-Account: {{account}}
-Pending Amount: Rs. {{balance}}
-Due Date: {{due_date}}
-
-Barah-e-karam customer se rabta kar ke unhein un ki pending qist ada karne ki yad-dihani karwayein taake un ka account regularize ho sake.
-
-Shukriya,
+Mohtaram {{customer_name}},
+Aap ka Account No. {{account}} abhi tak unpaid/overdue hai
+Product: {{product_name}}
+Branch: {{branch}}
+Barah-e-karam apni pending qist foran ada karein aur payment online bhejne ki surat mein confirmation share karein, ya branch visit karke apna account regularize karwain.
+Important: Agar aap ne waqt par qist ada na ki to aap ki eCIB/credit history mutasir ho sakti hai, jis ki wajah se mustaqbil mein financing hasil karne mein mushkil paish aa sakti hai. Mazeed, company policy aur applicable law ke mutabiq legal action bhi liya ja sakta hai.
+Qistbazar Recovery Officer
 {{recovery_person}}
-QistFlow Recovery Team ({{branch}})`,
+
+فوری ریکوری نوٹس
+
+محترم {{customer_name}}،
+
+آپ کا اکاؤنٹ نمبر {{account}} ابھی تک غیر ادا شدہ / واجب الادا ہے۔
+
+پروڈکٹ: {{product_name}}
+برانچ: {{branch}}
+
+براہِ کرم اپنی بقایا قسط فوری طور پر ادا کریں اور آن لائن ادائیگی کی صورت میں ادائیگی کی تصدیق فراہم کریں، یا برانچ وزٹ کرکے اپنا اکاؤنٹ ریگولرائز کروائیں۔
+
+اہم اطلاع: اگر آپ نے مقررہ وقت پر قسط ادا نہ کی تو آپ کی eCIB/کریڈٹ ہسٹری متاثر ہو سکتی ہے، جس کی وجہ سے مستقبل میں فنانسنگ حاصل کرنے میں مشکلات پیش آ سکتی ہیں۔ مزید برآں، کمپنی پالیسی اور قابلِ اطلاق قانون کے مطابق قانونی کارروائی بھی کی جا سکتی ہے۔
+
+Qistbazar Recovery Officer
+{{recovery_person}}`,
   },
   {
-    slug: "guarantor-followup-roman-urdu",
-    name: "Guarantor Follow-up Notice (Level 2)",
-    type: "GUARANTOR_FOLLOWUP",
-    language: "ROMAN_URDU",
-    body: `Yad-dihani Paigham - Zamanat
+    slug: "guarantor-urgent-notice",
+    name: "Guarantor Urgent Notice",
+    type: "GUARANTOR_FIRST_NOTICE",
+    language: "URDU_AND_ROMAN",
+    body: `Yaad-dihani Paigham — Guarantor
 
 Assalam-o-Alaikum {{guarantor_name}},
 
-{{customer_name}} ke account ({{account}}) ki installment pichle {{months_overdue}} mahine se unpaid hai.
+{{customer_name}} ke account number {{account}} ki qist ta-hala Unpaid/Overdue hai.
+Product: {{product_name}}
 
-Aap is account ke mohtaram guarantor hain. Hum customer se rabta karne ki koshish kar rahe hain. Barah-e-karam fori tor par customer se baat kar ke payment schedule confirm karwayein.
+Aap is account ke mohtaram Guarantor (Zamin) hain. Hum customer se rabta karne ki koshish kar rahe hain. Barah-e-karam fori tor par customer se rabta kar ke baqaya qist ki adaigi aur aainda ke Payment Schedule ki tasdeeq karwayein.
 
-Pending Balance: Rs. {{balance}}
-Recovery Officer: {{recovery_person}}
-QistFlow Recovery Department`,
-  },
-  {
-    slug: "guarantor-final-notice-roman-urdu",
-    name: "Guarantor Final Notice (Level 3)",
-    type: "GUARANTOR_FINAL_NOTICE",
-    language: "ROMAN_URDU",
-    body: `IMPORTANT NOTICE - GUARANTOR OBLIGATION
+Aham Ittela:
 
-Muazzaz {{guarantor_name}},
+Agar muqarrara waqt par qistain ada na ki gayin aur adaigi mein musalsal takheer hoti rahi to is ke nateejay mein Customer ke sath sath Guarantor ki ECIB/Credit History bhi mutasir ho sakti hai, jis se mustaqbil mein maali sahuliyat/financing hasil karne mein mushkilat paish aa sakti hain.
 
-{{customer_name}} (Account: {{account}}) ka account {{months_overdue}} mahine se overdue chal raha hai aur mutaddad koshishon ke bawajood payment masool nahi hui.
+Mazeed bar-aan, wajebat ki musalsal adam adaigi ki surat mein idaray ki policy aur qabil-e-ittelaq qawaneen ke mutabiq Customer aur Guarantor ke khilaf qanooni karwai bhi amal mein lai ja sakti hai.
 
-Bataur Guarantor aap ki zimadari hai ke customer se rabta kar ke mamla fori hal karwayein.
+Lehaza kisi bhi mazeed takheer se bachne ke liye barah-e-karam fori tor par mutaliqa customer se rabta kar ke baqaya qist ki adaigi yaqini banwayein.
 
-Total Balance: Rs. {{balance}}
-Branch: {{branch}}
-Recovery Contact: {{recovery_person}}
+Qistbazar Recovery Officer:
+{{recovery_person}}
 
-Barah-e-karam mazeed karwai se pehle humari recovery team se rabta karein.`,
-  },
+یاد دہانی پیغام — Guarantor
+
+السلام علیکم {{guarantor_name}}،
+
+{{customer_name}} کے اکاؤنٹ نمبر {{account}} کی قسط تاحال Unpaid/Overdue ہے۔
+پروڈکٹ: {{product_name}}
+
+آپ اس اکاؤنٹ کے معزز Guarantor (ضامن) ہیں۔ ہم کسٹمر سے رابطہ کرنے کی کوشش کر رہے ہیں۔ براہِ کرم فوری طور پر کسٹمر سے رابطہ کر کے بقایا قسط کی ادائیگی اور آئندہ کے Payment Schedule کی تصدیق کروائیں۔
+
+اہم اطلاع:
+
+اگر مقررہ وقت پر اقساط ادا نہ کی گئیں اور ادائیگی میں مسلسل تاخیر ہوتی رہی تو اس کے نتیجے میں Customer کے ساتھ ساتھ Guarantor کی ECIB/Credit History بھی متاثر ہو سکتی ہے، جس سے مستقبل میں مالی سہولیات/فنانسنگ کے حصول میں مشکلات پیش آ سکتی ہیں۔
+
+مزید برآں، واجبات کی مسلسل عدم ادائیگی کی صورت میں ادارے کی پالیسی اور قابلِ اطلاق قوانین کے مطابق Customer اور Guarantor کے خلاف قانونی کارروائی بھی عمل میں لائی جا سکتی ہے۔
+
+لہٰذا کسی بھی مزید تاخیر سے بچنے کے لیے براہِ کرم فوری طور پر متعلقہ کسٹمر سے رابطہ کر کے بقایا قسط کی ادائیگی یقینی بنوائیں۔
+
+Qistbazar Recovery Officer:
+{{recovery_person}}`,
+  }
 ];
