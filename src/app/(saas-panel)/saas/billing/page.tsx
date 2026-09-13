@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { CreditCard, CheckCircle2, Shield, Zap, RefreshCw, Plus, Edit } from "lucide-react";
+import { CreditCard, CheckCircle2, Shield, Zap, RefreshCw, Plus, Edit, Trash2 } from "lucide-react";
 import clsx from "clsx";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
@@ -15,28 +15,62 @@ export default function SaasBillingPage() {
   const dbPlans = planData?.plans || [];
 
   const [showPlanModal, setShowPlanModal] = useState(false);
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [maxUsers, setMaxUsers] = useState("");
   const [maxCustomers, setMaxCustomers] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  
+  const openCreateModal = () => {
+    setEditingPlanId(null);
+    setName(""); setPrice(""); setMaxUsers(""); setMaxCustomers("");
+    setShowPlanModal(true);
+  };
+  
+  const openEditModal = (plan: any) => {
+    setEditingPlanId(plan.id);
+    setName(plan.name);
+    setPrice(plan.price.toString());
+    setMaxUsers(plan.maxUsers.toString());
+    setMaxCustomers(plan.maxCustomers.toString());
+    setShowPlanModal(true);
+  };
 
-  const handleCreatePlan = async (e: React.FormEvent) => {
+  const handleSavePlan = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await fetch("/api/saas/plans", {
-        method: "POST",
+      const url = editingPlanId ? `/api/saas/plans/${editingPlanId}` : "/api/saas/plans";
+      const method = editingPlanId ? "PATCH" : "POST";
+      
+      await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, price, maxUsers, maxCustomers })
       });
       mutatePlans();
       setShowPlanModal(false);
-      setName(""); setPrice(""); setMaxUsers(""); setMaxCustomers("");
     } catch (err) {
       console.error(err);
     } finally {
       setSubmitting(false);
+    }
+  };
+  
+  const handleDeletePlan = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this plan?")) return;
+    try {
+      const res = await fetch(`/api/saas/plans/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || "Failed to delete plan.");
+      } else {
+        mutatePlans();
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -53,7 +87,7 @@ export default function SaasBillingPage() {
             </p>
           </div>
           <button 
-            onClick={() => setShowPlanModal(true)}
+            onClick={openCreateModal}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md shadow-indigo-500/20"
           >
             <Plus className="w-4 h-4" /> Create Custom Plan
@@ -65,15 +99,25 @@ export default function SaasBillingPage() {
           <div className="flex justify-center p-8"><RefreshCw className="w-6 h-6 animate-spin text-slate-500" /></div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {dbPlans.map((plan: any, i: number) => (
+            {dbPlans.map((plan: any) => (
               <div key={plan.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
-                    <Zap className="w-5 h-5" />
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
+                      <Zap className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-white">{plan.name}</h3>
+                      <p className="text-xs text-slate-400">${plan.price} / month</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-white">{plan.name}</h3>
-                    <p className="text-xs text-slate-400">${plan.price} / month</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => openEditModal(plan)} className="text-slate-400 hover:text-indigo-400">
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDeletePlan(plan.id)} className="text-slate-400 hover:text-rose-400">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
                 
@@ -101,17 +145,16 @@ export default function SaasBillingPage() {
                   <th className="px-5 py-3 text-xs font-bold text-slate-400 uppercase">Branch</th>
                   <th className="px-5 py-3 text-xs font-bold text-slate-400 uppercase">Current Plan</th>
                   <th className="px-5 py-3 text-xs font-bold text-slate-400 uppercase">Users Limit</th>
-                  <th className="px-5 py-3 text-xs font-bold text-slate-400 uppercase">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50">
                 {loadingTenants ? (
                   <tr>
-                    <td colSpan={4} className="px-5 py-8 text-center text-slate-500 text-sm">Loading subscriptions...</td>
+                    <td colSpan={3} className="px-5 py-8 text-center text-slate-500 text-sm">Loading subscriptions...</td>
                   </tr>
                 ) : tenants.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-5 py-8 text-center text-slate-500 text-sm">No branches found.</td>
+                    <td colSpan={3} className="px-5 py-8 text-center text-slate-500 text-sm">No branches found.</td>
                   </tr>
                 ) : tenants.map((t: any) => (
                   <tr key={t.id} className="hover:bg-slate-800/20 transition-colors">
@@ -134,11 +177,6 @@ export default function SaasBillingPage() {
                         </span>
                       </div>
                     </td>
-                    <td className="px-5 py-4">
-                      <button className="text-xs font-bold text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
-                        <Edit className="w-3 h-3" /> Edit Sub
-                      </button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -151,10 +189,10 @@ export default function SaasBillingPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-slate-900 rounded-2xl shadow-xl w-full max-w-md border border-slate-800 overflow-hidden animate-in zoom-in-95">
             <div className="p-5 border-b border-slate-800 flex justify-between items-center">
-              <h2 className="text-lg font-bold text-white">Create Custom Plan</h2>
+              <h2 className="text-lg font-bold text-white">{editingPlanId ? "Edit Plan" : "Create Custom Plan"}</h2>
               <button onClick={() => setShowPlanModal(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
-            <form onSubmit={handleCreatePlan} className="p-5 space-y-4">
+            <form onSubmit={handleSavePlan} className="p-5 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">Plan Name</label>
                 <input required value={name} onChange={e => setName(e.target.value)} type="text" className="w-full text-sm px-3 py-2 border rounded-lg bg-slate-950 border-slate-800 text-white" placeholder="e.g. Diamond" />
@@ -176,7 +214,7 @@ export default function SaasBillingPage() {
               <div className="pt-4 flex justify-end gap-3">
                 <button type="button" onClick={() => setShowPlanModal(false)} className="px-4 py-2 text-sm font-semibold text-slate-400 hover:text-white rounded-lg">Cancel</button>
                 <button disabled={submitting} type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg flex items-center gap-2">
-                  {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Create
+                  {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Save
                 </button>
               </div>
             </form>

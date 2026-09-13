@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SaasSidebar from "@/components/layout/SaasSidebar";
-import Header from "@/components/layout/Header";
+import SaasHeader from "@/components/layout/SaasHeader";
 import PwaInstallPrompt from "@/components/layout/PwaInstallPrompt";
 import { getClientSession } from "@/lib/client-auth";
 
@@ -55,8 +55,8 @@ export default function SaasLayout({
 
       {/* Main App Container */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* We reuse the generic Header but we can hide some parts if needed. The Header component checks if you are SUPER_ADMIN to show/hide branch switcher. */}
-        <Header onToggleMobileMenu={() => setMobileDrawerOpen(true)} />
+        {/* Dedicated SaaS Header (no tenant-specific buttons) */}
+        <SaasHeader onToggleMobileMenu={() => setMobileDrawerOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-6 lg:p-8 pb-24 md:pb-8">
           {children}

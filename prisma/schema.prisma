@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-1.0.x", "debian-openssl-1.1.x", "debian-openssl-3.0.x", "rhel-openssl-1.0.x", "rhel-openssl-3.0.x"]
 }
 
@@ -11,50 +11,73 @@ datasource db {
 
 // ── Multi-Tenant: Each company is a Tenant ───────────────────────────────────
 model Tenant {
-  id                  String               @id @default(cuid())
-  name                String               // "Lodhi Tools", "Qist Flow"
-  slug                String               @unique // "lodhi-tools", "qist-flow-27"
-  isActive            Boolean              @default(true)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  id        String   @id @default(cuid())
+  name      String // "Lodhi Tools", "Qist Flow"
+  slug      String   @unique // "lodhi-tools", "qist-flow-27"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // SaaS Plan & Limits
-  plan                String               @default("FREE")   // FREE, BASIC, PRO, ENTERPRISE
-  maxUsers            Int                  @default(10)
-  maxCustomers        Int                  @default(1000)
+  plan         String @default("FREE") // FREE, BASIC, PRO, ENTERPRISE
+  maxUsers     Int    @default(10)
+  maxCustomers Int    @default(1000)
 
   // Contact & Branding
-  contactEmail        String?
-  contactPhone        String?
-  address             String?
-  logoUrl             String?
-  primaryColor        String?              @default("#10b981")
+  contactEmail String?
+  contactPhone String?
+  address      String?
+  logoUrl      String?
+  primaryColor String? @default("#10b981")
 
   // Subscription
   subscriptionStartAt DateTime?
   subscriptionEndAt   DateTime?
   billingNote         String?
   customPlanId        String?
-  customPlan          SubscriptionPlan?    @relation(fields: [customPlanId], references: [id], onDelete: SetNull)
+  customPlan          SubscriptionPlan? @relation(fields: [customPlanId], references: [id], onDelete: SetNull)
 
   // WhatsApp Business API Credentials
-  waApiEndpoint       String?
-  waApiToken          String?
-  waPhoneNumberId     String?
-  waAccountId         String?
+  waApiEndpoint   String?
+  waApiToken      String?
+  waPhoneNumberId String?
+  waAccountId     String?
+
+  // SaaS Updates
+  isDeleted    Boolean   @default(false)
+  deletedAt    DateTime?
+  trialStartAt DateTime?
+  trialEndAt   DateTime?
+  status       String    @default("ACTIVE") // ACTIVE, TRIAL, PAST_DUE, SUSPENDED, INACTIVE, CANCELLED
+  timezone     String    @default("Asia/Karachi")
+  country      String    @default("Pakistan")
+
+  // Usage tracking
+  currentUsersCount      Int @default(0)
+  currentBranchesCount   Int @default(0)
+  currentWaAccountsCount Int @default(0)
+  currentCustomersCount  Int @default(0)
+
+  // Relations for new models
+  subscriptions     Subscription[]
+  invoices          Invoice[]
+  supportTickets    SupportTicket[]
+  waAccountStatuses WhatsAppAccountStatus[]
+  usageMetrics      UsageMetric[]
+  saasAuditLogs     SaaSAuditLog[]
 
   // Relations
-  users               User[]
-  customers           Customer[]
-  whatsAppSessions    WhatsAppSession[]
-  messageQueues       MessageQueue[]
-  messageLogs         MessageLog[]
-  activityLogs        ActivityLog[]
-  excelImports        ExcelImport[]
-  backups             BackupSnapshot[]
-  messageTemplates    MessageTemplate[]
-  reminderRules       ReminderRule[]
-  systemSettings      SystemSetting[]
+  users            User[]
+  customers        Customer[]
+  whatsAppSessions WhatsAppSession[]
+  messageQueues    MessageQueue[]
+  messageLogs      MessageLog[]
+  activityLogs     ActivityLog[]
+  excelImports     ExcelImport[]
+  backups          BackupSnapshot[]
+  messageTemplates MessageTemplate[]
+  reminderRules    ReminderRule[]
+  systemSettings   SystemSetting[]
 
   @@index([slug])
   @@index([plan])
@@ -62,44 +85,57 @@ model Tenant {
 }
 
 model SubscriptionPlan {
-  id                  String               @id @default(cuid())
-  name                String               // "Silver", "Gold", "Diamond"
-  price               Float
-  maxUsers            Int
-  maxCustomers        Int
-  features            String?              // JSON array of features
-  isPublic            Boolean              @default(true)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  
-  tenants             Tenant[]
+  id           String   @id @default(cuid())
+  name         String // "Silver", "Gold", "Diamond"
+  price        Float
+  maxUsers     Int
+  maxCustomers Int
+  features     String? // JSON array of features
+  isPublic     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenants Tenant[]
+}
+
+model GlobalAuditLog {
+  id        String   @id @default(cuid())
+  action    String // e.g. "BRANCH_CREATED", "PLAN_UPDATED"
+  details   String? // JSON string or plain text description
+  actorId   String // Super Admin ID who performed the action
+  createdAt DateTime @default(now())
 }
 
 model User {
-  id                  String               @id @default(cuid())
-  name                String
-  email               String               @unique
-  passwordHash        String
-  phone               String?
-  role                String               @default("RECOVERY_OFFICER") // ADMIN, MANAGER, RECOVERY_OFFICER
-  branch              String?
-  employeeCode        String?              @unique
-  department          String?
-  isActive            Boolean              @default(true)
-  mustChangePassword  Boolean              @default(false)
-  lastLoginAt         DateTime?
+  id                   String    @id @default(cuid())
+  name                 String
+  email                String    @unique
+  passwordHash         String
+  phone                String?
+  role                 String    @default("RECOVERY_OFFICER") // ADMIN, MANAGER, RECOVERY_OFFICER
+  branch               String?
+  employeeCode         String?   @unique
+  department           String?
+  isActive             Boolean   @default(true)
+  mustChangePassword   Boolean   @default(false)
+  lastLoginAt          DateTime?
   lastPasswordChangeAt DateTime?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // SaaS specific fields
+  globalRole       String? // SUPER_ADMIN, SAAS_ADMIN, SAAS_MANAGER, SUPPORT_AGENT, BILLING_MANAGER
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String?
 
   // Multi-Tenant
-  tenantId            String               @default("default")
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenantId String @default("default")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   // Manager hierarchy (Officer -> Manager)
-  managerId           String?
-  manager             User?                @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
-  subordinates        User[]               @relation("UserManager")
+  managerId    String?
+  manager      User?   @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  subordinates User[]  @relation("UserManager")
 
   // Customer Assignments
   assignedCustomers   Customer[]           @relation("CustomerAssignedOfficer")
@@ -108,14 +144,14 @@ model User {
   assignmentsMade     CustomerAssignment[] @relation("AssignmentAssignedBy")
 
   // WhatsApp Multi-User Session & Outbox
-  whatsAppSession     WhatsAppSession?
-  sentMessages        MessageQueue[]       @relation("MessageSender")
+  whatsAppSession WhatsAppSession?
+  sentMessages    MessageQueue[]   @relation("MessageSender")
 
   // Activity & Audit
-  activityLogs        ActivityLog[]
-  excelImports        ExcelImport[]
-  backups             BackupSnapshot[]
-  passwordResets      PasswordResetToken[]
+  activityLogs   ActivityLog[]
+  excelImports   ExcelImport[]
+  backups        BackupSnapshot[]
+  passwordResets PasswordResetToken[]
 
   @@index([role])
   @@index([managerId])
@@ -124,60 +160,60 @@ model User {
 }
 
 model Customer {
-  id                  String               @id @default(cuid())
+  id String @id @default(cuid())
 
   // Multi-Tenant
-  tenantId            String               @default("default")
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenantId String @default("default")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  account             String               // QistBazar Account number (unique per tenant)
-  customerName        String
-  primaryPhone        String               // Cleaned +92 or 03 format
-  secondaryPhone      String?
-  cnic                String?              // CNIC number (indexed)
-  webNo               String?              // Tracking / Web reference
-  address             String?
-  branch              String               @default("MAIN")
+  account        String // QistBazar Account number (unique per tenant)
+  customerName   String
+  primaryPhone   String // Cleaned +92 or 03 format
+  secondaryPhone String?
+  cnic           String? // CNIC number (indexed)
+  webNo          String? // Tracking / Web reference
+  address        String?
+  branch         String  @default("MAIN")
 
   // Product info
-  productName         String?
-  brand               String?
-  imei1               String?
-  imei2               String?
+  productName String?
+  brand       String?
+  imei1       String?
+  imei2       String?
 
   // Guarantors
-  guarantor1Name      String?
-  guarantor1Phone     String?
-  guarantor1Cnic      String?
-  guarantor1Address   String?
-  guarantor2Name      String?
-  guarantor2Phone     String?
-  guarantor2Cnic      String?
-  guarantor2Address   String?
+  guarantor1Name    String?
+  guarantor1Phone   String?
+  guarantor1Cnic    String?
+  guarantor1Address String?
+  guarantor2Name    String?
+  guarantor2Phone   String?
+  guarantor2Cnic    String?
+  guarantor2Address String?
 
   // Staff assignment (Legacy Excel fields preserved)
-  salesPerson         String?
-  recoveryPerson      String?              // Assigned recovery officer name in sheet
-  omsRecoveryPerson   String?
-  comment             String?
+  salesPerson       String?
+  recoveryPerson    String? // Assigned recovery officer name in sheet
+  omsRecoveryPerson String?
+  comment           String?
 
   // Active User / Team Assignment
-  assignedToUserId    String?
-  assignedTo          User?                @relation("CustomerAssignedOfficer", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  assignedManagerId   String?
-  assignedManager     User?                @relation("CustomerAssignedManager", fields: [assignedManagerId], references: [id], onDelete: SetNull)
-  assignments         CustomerAssignment[]
+  assignedToUserId  String?
+  assignedTo        User?                @relation("CustomerAssignedOfficer", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedManagerId String?
+  assignedManager   User?                @relation("CustomerAssignedManager", fields: [assignedManagerId], references: [id], onDelete: SetNull)
+  assignments       CustomerAssignment[]
 
-  optedOut            Boolean              @default(false)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  optedOut  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  installments        Installment[]
-  payments            Payment[]
-  messageQueues       MessageQueue[]
-  messageLogs         MessageLog[]
+  installments  Installment[]
+  payments      Payment[]
+  messageQueues MessageQueue[]
+  messageLogs   MessageLog[]
 
-  @@unique([account, tenantId])           // Account unique per tenant
+  @@unique([account, tenantId]) // Account unique per tenant
   @@index([customerName])
   @@index([primaryPhone])
   @@index([cnic])
@@ -190,20 +226,20 @@ model Customer {
 }
 
 model CustomerAssignment {
-  id                  String               @id @default(cuid())
-  customerId          String
-  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  userId              String
-  user                User                 @relation("AssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
-  assignedById        String?
-  assignedBy          User?                @relation("AssignmentAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
-  role                String               @default("RECOVERY_OFFICER") // MANAGER, RECOVERY_OFFICER
-  assignedAt          DateTime             @default(now())
-  unassignedAt        DateTime?
-  isActive            Boolean              @default(true)
-  notes               String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  id           String    @id @default(cuid())
+  customerId   String
+  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User      @relation("AssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedById String?
+  assignedBy   User?     @relation("AssignmentAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+  role         String    @default("RECOVERY_OFFICER") // MANAGER, RECOVERY_OFFICER
+  assignedAt   DateTime  @default(now())
+  unassignedAt DateTime?
+  isActive     Boolean   @default(true)
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([customerId])
   @@index([userId])
@@ -211,43 +247,43 @@ model CustomerAssignment {
 }
 
 model PasswordResetToken {
-  id                  String               @id @default(cuid())
-  userId              String
-  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash           String               @unique
-  expiresAt           DateTime
-  usedAt              DateTime?
-  createdAt           DateTime             @default(now())
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([expiresAt])
 }
 
 model Installment {
-  id                  String               @id @default(cuid())
-  customerId          String
-  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  emi                 Float                @default(0) // Monthly installment amount
-  balance             Float                @default(0) // Remaining total balance
-  shortExcess         Float                @default(0) // Short or excess
-  advanceReceived     Float                @default(0) // Down payment
-  dueDate             DateTime?                       // Installment due date
-  saleDate            DateTime?                       // Contract sale date
-  noOfMonths          Int                  @default(12)// Contract tenure
-  installmentTotal    Float                @default(0) // Total credit price
-  lastPaymentDate     DateTime?                       // Last recorded payment date
-  lastPaymentAmount   Float?                          // Last recorded payment amount
+  emi               Float     @default(0) // Monthly installment amount
+  balance           Float     @default(0) // Remaining total balance
+  shortExcess       Float     @default(0) // Short or excess
+  advanceReceived   Float     @default(0) // Down payment
+  dueDate           DateTime? // Installment due date
+  saleDate          DateTime? // Contract sale date
+  noOfMonths        Int       @default(12) // Contract tenure
+  installmentTotal  Float     @default(0) // Total credit price
+  lastPaymentDate   DateTime? // Last recorded payment date
+  lastPaymentAmount Float? // Last recorded payment amount
 
-  status              String               @default("UNKNOWN") // UPCOMING, DUE_TODAY, OVERDUE, PAID, PARTIAL, UNKNOWN
-  statusOverridden    Boolean              @default(false)
-  overrideReason      String?
+  status           String  @default("UNKNOWN") // UPCOMING, DUE_TODAY, OVERDUE, PAID, PARTIAL, UNKNOWN
+  statusOverridden Boolean @default(false)
+  overrideReason   String?
 
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  payments            Payment[]
-  messageQueues       MessageQueue[]
+  payments      Payment[]
+  messageQueues MessageQueue[]
 
   @@index([customerId])
   @@index([dueDate])
@@ -255,137 +291,137 @@ model Installment {
 }
 
 model Payment {
-  id                  String               @id @default(cuid())
-  customerId          String
-  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  installmentId       String?
-  installment         Installment?         @relation(fields: [installmentId], references: [id], onDelete: SetNull)
+  id            String       @id @default(cuid())
+  customerId    String
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  installmentId String?
+  installment   Installment? @relation(fields: [installmentId], references: [id], onDelete: SetNull)
 
-  amount              Float
-  paymentDate         DateTime             @default(now())
-  receiptNo           String?
-  paymentMethod       String               @default("CASH")
-  notes               String?
-  isVerified          Boolean              @default(true)
-  createdAt           DateTime             @default(now())
+  amount        Float
+  paymentDate   DateTime @default(now())
+  receiptNo     String?
+  paymentMethod String   @default("CASH")
+  notes         String?
+  isVerified    Boolean  @default(true)
+  createdAt     DateTime @default(now())
 
   @@index([customerId])
   @@index([paymentDate])
 }
 
 model ExcelImport {
-  id                  String               @id @default(cuid())
-  fileName            String
-  fileSize            Int                  @default(0)
-  totalRows           Int                  @default(0)
-  newRecords          Int                  @default(0)
-  updatedRecords      Int                  @default(0)
-  errorCount          Int                  @default(0)
-  status              String               @default("SUCCESS") // SUCCESS, PARTIAL, FAILED
-  columnMapping       String?              // JSON representation of column mappings
-  errorsJson          String?              // JSON array of detailed validation errors
-  snapshotJson        String?              // JSON snapshot for rollback safety
+  id             String  @id @default(cuid())
+  fileName       String
+  fileSize       Int     @default(0)
+  totalRows      Int     @default(0)
+  newRecords     Int     @default(0)
+  updatedRecords Int     @default(0)
+  errorCount     Int     @default(0)
+  status         String  @default("SUCCESS") // SUCCESS, PARTIAL, FAILED
+  columnMapping  String? // JSON representation of column mappings
+  errorsJson     String? // JSON array of detailed validation errors
+  snapshotJson   String? // JSON snapshot for rollback safety
 
   // Multi-Tenant
-  tenantId            String               @default("default")
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenantId String @default("default")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  userId              String?
-  user                User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt           DateTime             @default(now())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
 
-  importRows          ExcelImportRow[]
+  importRows ExcelImportRow[]
 
   @@index([createdAt])
   @@index([tenantId])
 }
 
 model ExcelImportRow {
-  id                  String               @id @default(cuid())
-  importId            String
-  excelImport         ExcelImport          @relation(fields: [importId], references: [id], onDelete: Cascade)
-  rowNumber           Int
-  accountNumber       String?
-  customerName        String?
-  phone               String?
-  status              String               // SUCCESS, ERROR, SKIPPED
-  errorMessage        String?
-  rawDataJson         String?
+  id            String      @id @default(cuid())
+  importId      String
+  excelImport   ExcelImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  rowNumber     Int
+  accountNumber String?
+  customerName  String?
+  phone         String?
+  status        String // SUCCESS, ERROR, SKIPPED
+  errorMessage  String?
+  rawDataJson   String?
 
   @@index([importId])
   @@index([status])
 }
 
 model MessageTemplate {
-  id                  String               @id @default(cuid())
-  name                String
-  slug                String               // Unique per tenant
-  type                String               @default("DUE_TODAY") // BEFORE_DUE, DUE_TODAY, OVERDUE, PAYMENT_RECEIVED, CUSTOM
-  language            String               @default("ROMAN_URDU") // ROMAN_URDU, URDU, ENGLISH
-  body                String
-  variables           String?              // Comma-separated variable names
-  isActive            Boolean              @default(true)
+  id        String  @id @default(cuid())
+  name      String
+  slug      String // Unique per tenant
+  type      String  @default("DUE_TODAY") // BEFORE_DUE, DUE_TODAY, OVERDUE, PAYMENT_RECEIVED, CUSTOM
+  language  String  @default("ROMAN_URDU") // ROMAN_URDU, URDU, ENGLISH
+  body      String
+  variables String? // Comma-separated variable names
+  isActive  Boolean @default(true)
 
   // Multi-Tenant
-  tenantId            String               @default("default")
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenantId String @default("default")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  reminderRules       ReminderRule[]
-  messageQueues       MessageQueue[]
+  reminderRules ReminderRule[]
+  messageQueues MessageQueue[]
 
-  @@unique([slug, tenantId])              // Slug unique per tenant
+  @@unique([slug, tenantId]) // Slug unique per tenant
   @@index([tenantId])
 }
 
 model ReminderRule {
-  id                  String               @id @default(cuid())
-  name                String
-  ruleType            String               // BEFORE_DUE, DUE_TODAY, OVERDUE_1D, OVERDUE_3D, OVERDUE_7D, OVERDUE_15D
-  daysOffset          Int                  // e.g. -1 for before due, 0 for due date, 1, 3, 7, 15 for overdue
-  timeWindowStart     String               @default("10:00") // 24hr format "10:00"
-  timeWindowEnd       String               @default("19:00") // 24hr format "19:00"
-  templateId          String
-  template            MessageTemplate      @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  maxReminders        Int                  @default(1)
-  minGapDays          Int                  @default(1)
-  isActive            Boolean              @default(true)
+  id              String          @id @default(cuid())
+  name            String
+  ruleType        String // BEFORE_DUE, DUE_TODAY, OVERDUE_1D, OVERDUE_3D, OVERDUE_7D, OVERDUE_15D
+  daysOffset      Int // e.g. -1 for before due, 0 for due date, 1, 3, 7, 15 for overdue
+  timeWindowStart String          @default("10:00") // 24hr format "10:00"
+  timeWindowEnd   String          @default("19:00") // 24hr format "19:00"
+  templateId      String
+  template        MessageTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  maxReminders    Int             @default(1)
+  minGapDays      Int             @default(1)
+  isActive        Boolean         @default(true)
 
   // Multi-Tenant
-  tenantId            String               @default("default")
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenantId String @default("default")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId])
 }
 
 model WhatsAppSession {
-  id                  String               @id @default(cuid())
-  userId              String?              @unique // Isolated session per user
-  user                User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String  @id @default(cuid())
+  userId String? @unique // Isolated session per user
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Multi-Tenant
-  tenantId            String               @default("default")
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenantId String @default("default")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  status              String               @default("NOT_CONNECTED") // NOT_CONNECTED, CONNECTING, QR_READY, PAIRING, CONNECTED, DISCONNECTED, RECONNECTING, LOGGED_OUT, ERROR
-  qrCode              String?              @db.Text
-  qrExpiresAt         DateTime?
-  pairingCode         String?
-  requestedPhone      String?
-  connectedPhone      String?
-  connectedName       String?
-  connectedAt         DateTime?
-  lastDisconnectedAt  DateTime?
-  lastActiveAt        DateTime?            @default(now())
-  reconnectAttempts   Int                  @default(0)
-  errorMessage        String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  status             String    @default("NOT_CONNECTED") // NOT_CONNECTED, CONNECTING, QR_READY, PAIRING, CONNECTED, DISCONNECTED, RECONNECTING, LOGGED_OUT, ERROR
+  qrCode             String?   @db.Text
+  qrExpiresAt        DateTime?
+  pairingCode        String?
+  requestedPhone     String?
+  connectedPhone     String?
+  connectedName      String?
+  connectedAt        DateTime?
+  lastDisconnectedAt DateTime?
+  lastActiveAt       DateTime? @default(now())
+  reconnectAttempts  Int       @default(0)
+  errorMessage       String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([status])
   @@index([userId])
@@ -393,43 +429,43 @@ model WhatsAppSession {
 }
 
 model MessageQueue {
-  id                  String               @id @default(cuid())
-  senderUserId        String?              // Officer/Admin whose WhatsApp sends this message
-  senderUser          User?                @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
-  recipientPhone      String
-  recipientName       String?
-  recipientType       String               @default("CUSTOMER") // CUSTOMER, GUARANTOR_1, GUARANTOR_2
-  guarantorId         String?              // GUARANTOR_1, GUARANTOR_2
-  customerId          String?
-  customer            Customer?            @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  installmentId       String?
-  installment         Installment?         @relation(fields: [installmentId], references: [id], onDelete: SetNull)
-  templateId          String?
-  template            MessageTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  
+  id             String           @id @default(cuid())
+  senderUserId   String? // Officer/Admin whose WhatsApp sends this message
+  senderUser     User?            @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
+  recipientPhone String
+  recipientName  String?
+  recipientType  String           @default("CUSTOMER") // CUSTOMER, GUARANTOR_1, GUARANTOR_2
+  guarantorId    String? // GUARANTOR_1, GUARANTOR_2
+  customerId     String?
+  customer       Customer?        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  installmentId  String?
+  installment    Installment?     @relation(fields: [installmentId], references: [id], onDelete: SetNull)
+  templateId     String?
+  template       MessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
   // Multi-Tenant
-  tenantId            String               @default("default")
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenantId String @default("default")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  messageType         String               @default("REMINDER") // REMINDER, MANUAL, PAYMENT_CONFIRMATION, GUARANTOR_FIRST_NOTICE, GUARANTOR_FOLLOWUP, GUARANTOR_FINAL_NOTICE
-  escalationLevel     Int                  @default(0) // 0 = Customer, 1 = WhatsApp fail, 2 = Overdue, 3 = Final
-  approvalStatus      String               @default("NOT_REQUIRED") // NOT_REQUIRED, PENDING_APPROVAL, APPROVED, REJECTED
-  approvedByUserId    String?
-  approvedAt          DateTime?
-  rejectionReason     String?
-  escalationReason    String?
+  messageType      String    @default("REMINDER") // REMINDER, MANUAL, PAYMENT_CONFIRMATION, GUARANTOR_FIRST_NOTICE, GUARANTOR_FOLLOWUP, GUARANTOR_FINAL_NOTICE
+  escalationLevel  Int       @default(0) // 0 = Customer, 1 = WhatsApp fail, 2 = Overdue, 3 = Final
+  approvalStatus   String    @default("NOT_REQUIRED") // NOT_REQUIRED, PENDING_APPROVAL, APPROVED, REJECTED
+  approvedByUserId String?
+  approvedAt       DateTime?
+  rejectionReason  String?
+  escalationReason String?
 
-  messageText         String
-  status              String               @default("QUEUED") // QUEUED, SENDING, SENT, FAILED, CANCELLED, RETRYING
-  priority            Int                  @default(0) // Higher = sent first
-  idempotencyKey      String               @unique // Hash: customerId + guarantorId + type + dueDate + cycle
-  scheduledFor        DateTime             @default(now())
-  sentAt              DateTime?
-  retryCount          Int                  @default(0)
-  maxRetries          Int                  @default(3)
-  errorMessage        String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  messageText    String
+  status         String    @default("QUEUED") // QUEUED, SENDING, SENT, FAILED, CANCELLED, RETRYING
+  priority       Int       @default(0) // Higher = sent first
+  idempotencyKey String    @unique // Hash: customerId + guarantorId + type + dueDate + cycle
+  scheduledFor   DateTime  @default(now())
+  sentAt         DateTime?
+  retryCount     Int       @default(0)
+  maxRetries     Int       @default(3)
+  errorMessage   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([status])
   @@index([approvalStatus, status])
@@ -443,27 +479,27 @@ model MessageQueue {
 }
 
 model MessageLog {
-  id                  String               @id @default(cuid())
-  direction           String               @default("OUTBOUND") // OUTBOUND, INBOUND
-  recipientPhone      String
-  recipientName       String?
-  recipientType       String               @default("CUSTOMER") // CUSTOMER, GUARANTOR_1, GUARANTOR_2
-  guarantorId         String?
-  escalationLevel     Int                  @default(0)
-  senderPhone         String?
-  customerId          String?
-  customer            Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  id              String    @id @default(cuid())
+  direction       String    @default("OUTBOUND") // OUTBOUND, INBOUND
+  recipientPhone  String
+  recipientName   String?
+  recipientType   String    @default("CUSTOMER") // CUSTOMER, GUARANTOR_1, GUARANTOR_2
+  guarantorId     String?
+  escalationLevel Int       @default(0)
+  senderPhone     String?
+  customerId      String?
+  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   // Multi-Tenant
-  tenantId            String               @default("default")
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenantId String @default("default")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  messageText         String
-  messageType         String               @default("REMINDER")
-  status              String               @default("SENT") // SENT, DELIVERED, READ, FAILED, UNKNOWN
-  waMessageId         String?
-  errorMessage        String?
-  sentAt              DateTime             @default(now())
+  messageText  String
+  messageType  String   @default("REMINDER")
+  status       String   @default("SENT") // SENT, DELIVERED, READ, FAILED, UNKNOWN
+  waMessageId  String?
+  errorMessage String?
+  sentAt       DateTime @default(now())
 
   @@index([recipientPhone])
   @@index([recipientType])
@@ -474,20 +510,20 @@ model MessageLog {
 }
 
 model ActivityLog {
-  id                  String               @id @default(cuid())
-  userId              String?
-  user                User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
-  action              String               // LOGIN, EXCEL_IMPORT, REMINDER_SENT, USER_CREATE, CUSTOMER_ASSIGN, etc.
-  entityType          String?              // Customer, Installment, User, CustomerAssignment, etc.
-  entityId            String?
-  details             String?              // JSON string
-  ipAddress           String?
+  id         String  @id @default(cuid())
+  userId     String?
+  user       User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String // LOGIN, EXCEL_IMPORT, REMINDER_SENT, USER_CREATE, CUSTOMER_ASSIGN, etc.
+  entityType String? // Customer, Installment, User, CustomerAssignment, etc.
+  entityId   String?
+  details    String? // JSON string
+  ipAddress  String?
 
   // Multi-Tenant
-  tenantId            String               @default("default")
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenantId String @default("default")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  createdAt           DateTime             @default(now())
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([action])
@@ -496,35 +532,265 @@ model ActivityLog {
 }
 
 model SystemSetting {
-  id                  String               @id @default(cuid())
-  key                 String
+  id  String @id @default(cuid())
+  key String
 
   // Multi-Tenant
-  tenantId            String               @default("default")
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenantId String @default("default")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  value               String               // JSON string
-  description         String?
-  updatedAt           DateTime             @updatedAt
+  value       String // JSON string
+  description String?
+  updatedAt   DateTime @updatedAt
 
-  @@unique([key, tenantId])               // Key unique per tenant
+  @@unique([key, tenantId]) // Key unique per tenant
 }
 
 model BackupSnapshot {
-  id                  String               @id @default(cuid())
-  name                String
-  type                String               @default("MANUAL") // AUTO_PRE_IMPORT, MANUAL, SCHEDULED
-  recordCounts        String?              // JSON counts
-  dataJson            String?              // JSON snapshot data or path
+  id           String  @id @default(cuid())
+  name         String
+  type         String  @default("MANUAL") // AUTO_PRE_IMPORT, MANUAL, SCHEDULED
+  recordCounts String? // JSON counts
+  dataJson     String? // JSON snapshot data or path
 
   // Multi-Tenant
-  tenantId            String               @default("default")
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenantId String @default("default")
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  userId              String?
-  user                User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt           DateTime             @default(now())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([tenantId])
+}
+
+// ── SaaS Models ──────────────────────────────────────────────────────────────
+
+model PlanVersion {
+  id            String  @id @default(cuid())
+  name          String // "Business Plan"
+  slug          String // "business-plan"
+  version       Int     @default(1)
+  description   String?
+  status        String  @default("ACTIVE") // DRAFT, ACTIVE, ARCHIVED
+  isPublic      Boolean @default(true)
+  displayOrder  Int     @default(0)
+  isRecommended Boolean @default(false)
+  badge         String?
+  planIcon      String?
+
+  // Pricing
+  monthlyPrice Float  @default(0)
+  yearlyPrice  Float  @default(0)
+  currency     String @default("PKR")
+  setupFee     Float  @default(0)
+
+  // Limits
+  maxUsers           Int @default(5)
+  maxBranches        Int @default(1)
+  maxWaAccounts      Int @default(1)
+  maxCustomers       Int @default(500)
+  maxMonthlyMessages Int @default(1000)
+  maxTemplates       Int @default(10)
+  maxStorageMb       Int @default(1024)
+  maxApiRequests     Int @default(10000)
+
+  // Features (JSON)
+  featuresEnabled String?
+
+  // Trial
+  trialDays        Int    @default(0)
+  afterTrialAction String @default("SUSPEND") // SUSPEND, READ_ONLY, REQUIRE_PAYMENT, DOWNGRADE
+
+  // Billing Rules
+  autoRenewal     Boolean @default(true)
+  gracePeriodDays Int     @default(3)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id            String      @id @default(cuid())
+  tenantId      String
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planVersionId String
+  planVersion   PlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Restrict)
+
+  status       String    @default("ACTIVE") // ACTIVE, TRIAL, PAST_DUE, GRACE_PERIOD, RESTRICTED, SUSPENDED, CANCELLED
+  billingCycle String    @default("MONTHLY") // MONTHLY, YEARLY
+  startAt      DateTime
+  renewsAt     DateTime?
+  trialEndAt   DateTime?
+  cancelledAt  DateTime?
+
+  amount        Float
+  currency      String @default("PKR")
+  paymentStatus String @default("PAID") // PAID, PENDING, FAILED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoices Invoice[]
+}
+
+model Coupon {
+  id                 String    @id @default(cuid())
+  code               String    @unique
+  percentageDiscount Float?
+  fixedDiscount      Float?
+  startAt            DateTime?
+  expiresAt          DateTime?
+  maxUses            Int?
+  usedCount          Int       @default(0)
+  perTenantLimit     Int       @default(1)
+  applicablePlans    String? // JSON array of plan slugs
+  firstPaymentOnly   Boolean   @default(true)
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model AddOn {
+  id           String  @id @default(cuid())
+  name         String
+  description  String?
+  price        Float
+  billingCycle String  @default("MONTHLY")
+
+  // Increases
+  addUsers      Int @default(0)
+  addMessages   Int @default(0)
+  addWaAccounts Int @default(0)
+  addStorageMb  Int @default(0)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  invoiceNumber  String        @unique
+  tenantId       String
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  amount   Float
+  tax      Float  @default(0)
+  discount Float  @default(0)
+  total    Float
+  currency String @default("PKR")
+
+  status String    @default("PENDING") // PAID, PENDING, OVERDUE, CANCELLED, REFUNDED
+  dueAt  DateTime?
+  paidAt DateTime?
+
+  pdfUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SupportTicket {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subject  String
+  category String // BILLING, TECHNICAL, WHATSAPP, FEATURE_REQUEST, OTHER
+  priority String @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  status   String @default("OPEN") // OPEN, IN_PROGRESS, WAITING, RESOLVED, CLOSED
+
+  assignedAgentId String?
+  // Relation to User is tricky if the agent is a SaaS Admin, but we can assume they are a User in the DB
+
+  description String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Announcement {
+  id             String    @id @default(cuid())
+  title          String
+  content        String    @db.Text
+  type           String    @default("INFO") // INFO, WARNING, MAINTENANCE, CRITICAL, PROMOTION
+  targetAudience String    @default("ALL") // ALL, SELECTED_PLANS, SELECTED_TENANTS
+  targetData     String? // JSON array
+  scheduledFor   DateTime?
+  expiresAt      DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model SaaSNotification {
+  id              String   @id @default(cuid())
+  type            String // WHATSAPP_DISCONNECTED, API_ERROR, SUBSCRIPTION_EXPIRING, USAGE_WARNING, etc.
+  message         String
+  relatedTenantId String?
+  isRead          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+}
+
+model WhatsAppAccountStatus {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  wabaId              String?
+  phoneNumberId       String?
+  businessPhoneNumber String?
+
+  connectionStatus String @default("DISCONNECTED") // CONNECTED, DISCONNECTED, ERROR
+  apiStatus        String @default("UNKNOWN") // HEALTHY, WARNING, CRITICAL
+  webhookStatus    String @default("UNKNOWN") // VERIFIED, ERROR, PENDING
+  qualityRating    String @default("UNKNOWN") // GREEN, YELLOW, RED
+  messagingLimit   String @default("UNKNOWN")
+
+  lastSuccessfulReqAt DateTime?
+  lastFailedReqAt     DateTime?
+  lastWebhookEventAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UsageMetric {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  month             String // "2026-09"
+  messagesSent      Int    @default(0)
+  messagesDelivered Int    @default(0)
+  messagesRead      Int    @default(0)
+  messagesFailed    Int    @default(0)
+  apiRequests       Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, month])
+}
+
+model SaaSAuditLog {
+  id       String  @id @default(cuid())
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String? // The SaaS Admin who performed the action
+  action String // PLAN_CHANGED, TENANT_SUSPENDED, WHATSAPP_CONNECTED, IMPERSONATION_STARTED
+
+  beforeValue String? @db.Text
+  afterValue  String? @db.Text
+
+  ipAddress String?
+  device    String?
+
+  createdAt DateTime @default(now())
 }

@@ -1,36 +1,46 @@
 const { Client } = require('ssh2');
-const conn = new Client();
+const fs = require('fs');
 
-const commands = [
-  'cd /home/qistflow27/qistflow-worker',
-  // Stop and delete old pm2 process
-  'npx pm2 delete qistflow-worker 2>/dev/null || true',
-  // Allow esbuild scripts (needed by tsx)
-  'npm config set allow-scripts=esbuild --location=user',
-  // Start fresh with tsx directly
-  'npx pm2 start ecosystem.config.js --only qistflow-worker',
-  'npx pm2 save',
-  'sleep 8',
-  'echo "=== Worker Logs ==="',
-  'npx pm2 logs qistflow-worker --lines 30 --nostream 2>&1',
-  'echo "=== PM2 Status ==="',
-  'npx pm2 list'
-].join(' && ');
+const conn = new Client();
+const localBundle = 'd:\\QistFlow\\dist\\worker.bundle.js';
+const remotePath = '/home/qistflow27/qistflow-worker/dist/worker.bundle.js';
 
 conn.on('ready', () => {
-  console.log('SSH Connected - Restarting worker with tsx...');
-  conn.exec(commands, (err, stream) => {
+  console.log('SSH Connected - Uploading bundle...');
+  conn.sftp((err, sftp) => {
     if (err) throw err;
-    stream.on('close', (code) => {
-      console.log('\nexit code:', code);
+
+    const localSize = fs.statSync(localBundle).size;
+    console.log(`Uploading ${(localSize / 1024 / 1024).toFixed(1)}MB bundle...`);
+
+    const ws = sftp.createWriteStream(remotePath, { flags: 'w' });
+    const rs = fs.createReadStream(localBundle);
+
+    ws.on('close', () => {
+      console.log('Upload complete! Verifying...');
+      // AlwaysData auto-restarts when the file changes
+      conn.exec(
+        'ls -lh /home/qistflow27/qistflow-worker/dist/worker.bundle.js && sleep 5 && curl -s http://localhost:8100/health 2>/dev/null || echo "waiting for restart..."',
+        (e, stream) => {
+          if (e) throw e;
+          stream.on('close', () => conn.end())
+            .on('data', d => process.stdout.write(d))
+            .stderr.on('data', d => process.stderr.write(d));
+        }
+      );
+    });
+
+    ws.on('error', err => {
+      console.error('Upload error:', err);
       conn.end();
-    }).on('data', d => process.stdout.write(d))
-      .stderr.on('data', d => process.stderr.write(d));
+    });
+
+    rs.pipe(ws);
+    
+    let uploaded = 0;
+    rs.on('data', chunk => {
+      uploaded += chunk.length;
+      process.stdout.write(`\rUploaded: ${(uploaded / 1024 / 1024).toFixed(1)}MB / ${(localSize / 1024 / 1024).toFixed(1)}MB`);
+    });
   });
-}).connect({
-  host: 'ssh-qistflow27.alwaysdata.net',
-  port: 22,
-  username: 'qistflow27',
-  password: '@Lodhi9900',
-  readyTimeout: 20000
-});
+}).connect({ host: 'ssh-qistflow27.alwaysdata.net', port: 22, username: 'qistflow27', password: '@Lodhi9900' });

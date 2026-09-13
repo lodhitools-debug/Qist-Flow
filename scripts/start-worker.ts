@@ -101,14 +101,15 @@ async function runDbWatchLoop() {
         }
 
         // 2. Logout / Change Number request
-        //    — act on any active session OR if the in-memory session still has isLoggedOut=false
-        //    — this prevents the edge case where DB says LOGGED_OUT but worker has NOT cleaned up
+        //    — only act if session is ACTIVELY connected/in-progress in memory
+        //    — do NOT check !isIntentionallyLoggedOut() alone — after logoutUser() the session
+        //      is deleted from the map, so next getSession() returns a fresh stub with isLoggedOut=false,
+        //      causing an infinite logout loop for any DB-LOGGED_OUT user.
         else if (
           session.status === "LOGGED_OUT" &&
           !onCooldown &&
           (userSession.isConnected() ||
-            ["CONNECTED", "QR_READY", "PAIRING", "CONNECTING", "RECONNECTING"].includes(userSession.getConnectionState()) ||
-            !userSession.isIntentionallyLoggedOut())
+            ["CONNECTED", "QR_READY", "PAIRING", "CONNECTING", "RECONNECTING"].includes(userSession.getConnectionState()))
         ) {
           console.log(`🗑️ [Worker] Logging out session for user: ${userId}`);
           lastActionPerUser.set(userId, now);
