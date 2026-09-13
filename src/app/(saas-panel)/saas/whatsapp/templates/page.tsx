@@ -11,7 +11,7 @@ export default function TemplatesPage() {
           <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> APPROVED</span>
         </div>
         <div className="p-4 bg-slate-50 text-sm font-mono text-slate-700">
-          "Dear {{1}}, your installment of Rs {{2}} for {{3}} is due on {{4}}. Please pay on time to avoid late fees."
+          "Dear {'{{1}}'}, your installment of Rs {'{{2}}'} for {'{{3}}'} is due on {'{{4}}'}. Please pay on time to avoid late fees."
         </div>
       </div>
     </div>
