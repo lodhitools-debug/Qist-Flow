@@ -20,7 +20,7 @@ export async function POST(req: Request) {
         tenantId: body.tenantId,
         wabaId: body.wabaId,
         phoneNumberId: body.phoneNumberId,
-        status: 'CONNECTED',
+        connectionStatus: 'CONNECTED',
         qualityRating: 'GREEN',
         messagingLimit: '1K / 24h'
       }

@@ -18,6 +18,7 @@ export async function POST(req: Request) {
     const plan = await prisma.planVersion.create({
       data: {
         name: body.name,
+        slug: body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''),
         monthlyPrice: parseFloat(body.monthlyPrice),
         maxUsers: parseInt(body.maxUsers),
         maxBranches: parseInt(body.maxBranches),
