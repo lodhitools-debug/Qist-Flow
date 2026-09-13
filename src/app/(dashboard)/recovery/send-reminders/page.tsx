@@ -378,16 +378,42 @@ function BulkReminderWizardContent() {
                 </p>
               </div>
 
-              <div className="flex gap-3">
-                <select
-                  value={recipientType}
-                  onChange={(e) => setRecipientType(e.target.value)}
-                  className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3.5 py-2 text-xs font-bold text-emerald-800 dark:text-emerald-300"
-                >
-                  <option value="CUSTOMER">Send to Customer Only</option>
-                  <option value="GUARANTOR">Send to Guarantor Only</option>
-                  <option value="BOTH">Send to Both</option>
-                </select>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                  <button
+                    onClick={() => setRecipientType("CUSTOMER")}
+                    className={clsx(
+                      "px-4 py-1.5 text-xs font-bold rounded-lg transition-all",
+                      recipientType === "CUSTOMER"
+                        ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    Customer Only
+                  </button>
+                  <button
+                    onClick={() => setRecipientType("GUARANTOR")}
+                    className={clsx(
+                      "px-4 py-1.5 text-xs font-bold rounded-lg transition-all",
+                      recipientType === "GUARANTOR"
+                        ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    Guarantor Only
+                  </button>
+                  <button
+                    onClick={() => setRecipientType("BOTH")}
+                    className={clsx(
+                      "px-4 py-1.5 text-xs font-bold rounded-lg transition-all",
+                      recipientType === "BOTH"
+                        ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    Send to Both
+                  </button>
+                </div>
                 <select
                   value={selectedTemplateId}
                   onChange={(e) => setSelectedTemplateId(e.target.value)}
@@ -399,6 +425,7 @@ function BulkReminderWizardContent() {
                     </option>
                   ))}
                 </select>
+              </div>
               </div>
             </div>
 
