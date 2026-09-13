@@ -6,7 +6,7 @@ export async function GET() {
     const subscriptions = await prisma.subscription.findMany({
       include: {
         tenant: true,
-        plan: true
+        planVersion: true
       }
     });
     return NextResponse.json({ subscriptions });
