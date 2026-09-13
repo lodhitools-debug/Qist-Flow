@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
   try {
     const plans = await prisma.planVersion.findMany({
-      orderBy: { priceMonthly: 'asc' }
+      orderBy: { monthlyPrice: 'asc' }
     });
     return NextResponse.json({ plans });
   } catch (error) {
@@ -18,11 +18,11 @@ export async function POST(req: Request) {
     const plan = await prisma.planVersion.create({
       data: {
         name: body.name,
-        priceMonthly: parseFloat(body.priceMonthly),
+        monthlyPrice: parseFloat(body.monthlyPrice),
         maxUsers: parseInt(body.maxUsers),
         maxBranches: parseInt(body.maxBranches),
         maxWaAccounts: parseInt(body.maxWaAccounts),
-        maxMessagesPerMonth: parseInt(body.maxMessagesPerMonth),
+        maxMonthlyMessages: parseInt(body.maxMonthlyMessages),
         isTrial: body.isTrial || false,
         isRecommended: body.isRecommended || false,
         isActive: true

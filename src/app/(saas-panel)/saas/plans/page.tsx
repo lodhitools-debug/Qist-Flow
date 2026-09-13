@@ -67,9 +67,9 @@ export default function SaaSPlansPage() {
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">{plan.name}</h3>
               <div className="mt-4 mb-6 flex items-baseline gap-1">
                 <span className="text-3xl font-black text-slate-900 dark:text-white">
-                  {plan.priceMonthly === 0 ? "Free" : `Rs ${plan.priceMonthly.toLocaleString()}`}
+                  {plan.monthlyPrice === 0 ? "Free" : `Rs ${plan.monthlyPrice.toLocaleString()}`}
                 </span>
-                {plan.priceMonthly > 0 && <span className="text-sm font-medium text-slate-500">/ month</span>}
+                {plan.monthlyPrice > 0 && <span className="text-sm font-medium text-slate-500">/ month</span>}
               </div>
               <div className="space-y-4 flex-1">
                 <p className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 pb-2">Limits</p>
@@ -77,7 +77,7 @@ export default function SaaSPlansPage() {
                   <LimitItem label="Admin Users" value={plan.maxUsers} />
                   <LimitItem label="Branches" value={plan.maxBranches} />
                   <LimitItem label="WhatsApp Accounts" value={plan.maxWaAccounts} />
-                  <LimitItem label="Messages" value={plan.maxMessagesPerMonth + '/mo'} />
+                  <LimitItem label="Messages" value={plan.maxMonthlyMessages + '/mo'} />
                 </ul>
               </div>
             </div>
