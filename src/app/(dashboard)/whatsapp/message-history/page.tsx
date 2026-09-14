@@ -116,6 +116,28 @@ export default function MessageHistoryPage() {
     }
   };
 
+  const handleDeleteHistoryItem = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this log?")) return;
+    try {
+      const res = await fetch(`/api/whatsapp/history?id=${id}`, { method: "DELETE" });
+      if (res.ok) fetchHistory();
+      else alert("Failed to delete log");
+    } catch (err) {
+      console.error("Failed to delete log", err);
+    }
+  };
+
+  const handleDeleteQueueItem = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this queue item?")) return;
+    try {
+      const res = await fetch(`/api/whatsapp/queue?id=${id}`, { method: "DELETE" });
+      if (res.ok) fetchQueue();
+      else alert("Failed to delete queue item");
+    } catch (err) {
+      console.error("Failed to delete queue item", err);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -235,6 +257,7 @@ export default function MessageHistoryPage() {
                   <th className="py-3 px-4">Message Content</th>
                   <th className="py-3 px-4">Sent Time</th>
                   <th className="py-3 px-4">Delivery Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -247,7 +270,7 @@ export default function MessageHistoryPage() {
                   </tr>
                 ) : logs.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-slate-400">
+                    <td colSpan={7} className="py-12 text-center text-slate-400">
                       No WhatsApp delivery history found.
                     </td>
                   </tr>
@@ -294,6 +317,15 @@ export default function MessageHistoryPage() {
                           )}
                           <span>{log.status}</span>
                         </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          onClick={() => handleDeleteHistoryItem(log.id)}
+                          className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 border border-rose-100 text-[11px] font-semibold transition-colors"
+                          title="Delete Log"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -359,7 +391,7 @@ export default function MessageHistoryPage() {
                       <td className="py-3 px-4 text-slate-500">
                         {item.retryCount} / {item.maxRetries}
                       </td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-4 text-right flex items-center justify-end gap-1">
                         {item.status === "FAILED" && (
                           <button
                             onClick={() => handleRetryItem(item.id)}
@@ -370,6 +402,13 @@ export default function MessageHistoryPage() {
                             Retry
                           </button>
                         )}
+                        <button
+                          onClick={() => handleDeleteQueueItem(item.id)}
+                          className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 border border-rose-100 text-[11px] font-semibold transition-colors"
+                          title="Delete Queue Item"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))
