@@ -345,8 +345,11 @@ export default function CustomersPage() {
     const balance = inst?.balance || 0;
     const dueDate = inst?.dueDate ? new Date(inst.dueDate).toLocaleDateString("en-PK") : "Due Date";
 
+    const productName = cust.productName || "Product";
+    const branch = cust.branch || "Branch";
+
     setMessageText(
-      `Assalam-o-Alaikum ${cust.customerName},\n\nAap ki Rs. ${emi.toLocaleString()} qist ki due date ${dueDate} hai (Account: ${cust.account}).\nRemaining Balance: Rs. ${balance.toLocaleString()}.\n\nBarah-e-karam payment jald az jald clear karein.\nShukriya,\nQistBazar Recovery`
+      `فوری ریکوری نوٹس\n\nمحترم ${cust.customerName}،\n\nآپ کا اکاؤنٹ نمبر ${cust.account} ابھی تک غیر ادا شدہ / واجب الادا ہے۔\n\nپروڈکٹ: ${productName}\nبرانچ: ${branch}\n\nبراہِ کرم اپنی بقایا قسط فوری طور پر ادا کریں اور آن لائن ادائیگی کی صورت میں ادائیگی کی تصدیق فراہم کریں، یا برانچ وزٹ کرکے اپنا اکاؤنٹ ریگولرائز کروائیں۔\n\nاہم اطلاع: اگر آپ نے مقررہ وقت پر قسط ادا نہ کی تو آپ کی eCIB/کریڈٹ ہسٹری متاثر ہو سکتی ہے، جس کی وجہ سے مستقبل میں فنانسنگ حاصل کرنے میں مشکلات پیش آ سکتی ہیں۔ مزید برآں، کمپنی پالیسی اور قابلِ اطلاق قانون کے مطابق قانونی کارروائی بھی کی جا سکتی ہے۔\n\nQistbazar Recovery Officer\nGhulam Ahmad Razzaqi`
     );
     setRecipientType("CUSTOMER");
     setSendResult(null);

@@ -21,7 +21,7 @@ import { getStatusBadgeConfig } from "@/lib/installment-engine";
 import { formatDisplayPhone } from "@/lib/excel/mapper";
 
 export default function RecoveryWorkspacePage() {
-  const [activeTab, setActiveTab] = useState<string>("DUE_TODAY");
+  const [activeTab, setActiveTab] = useState<string>("OVERDUE_1M");
   const [branch, setBranch] = useState<string>("ALL");
   const [targets, setTargets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,7 +81,6 @@ export default function RecoveryWorkspacePage() {
   }, [activeTab, branch]);
 
   const tabs = [
-    { id: "DUE_TODAY", label: "Due Today", icon: CalendarCheck, color: "text-amber-500" },
     { id: "OVERDUE_1M", label: "1 Month Overdue", icon: AlertTriangle, color: "text-orange-500" },
     { id: "OVERDUE_2M", label: "2 Months Overdue", icon: AlertTriangle, color: "text-rose-500" },
     { id: "OVERDUE_3M", label: "3 Months Overdue", icon: AlertTriangle, color: "text-red-600" },
