@@ -426,7 +426,6 @@ function BulkReminderWizardContent() {
                   ))}
                 </select>
               </div>
-              </div>
             </div>
 
             {/* Anti-ban Throttling Disclaimer */}
