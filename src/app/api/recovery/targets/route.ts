@@ -44,18 +44,21 @@ export async function GET(req: NextRequest) {
     } else if (filterType === "UPCOMING_1D") {
       const tmrw = addDays(now, 1);
       where.dueDate = { gte: startOfDay(tmrw), lte: endOfDay(tmrw) };
-    } else if (filterType === "OVERDUE_1D") {
-      const d1 = subDays(now, 1);
-      where.dueDate = { gte: startOfDay(d1), lte: endOfDay(d1) };
-    } else if (filterType === "OVERDUE_3D") {
-      const d3 = subDays(now, 3);
-      where.dueDate = { gte: startOfDay(d3), lte: endOfDay(d3) };
-    } else if (filterType === "OVERDUE_7D") {
-      const d7 = subDays(now, 7);
-      where.dueDate = { gte: startOfDay(d7), lte: endOfDay(d7) };
-    } else if (filterType === "OVERDUE_15D") {
-      const d15 = subDays(now, 15);
-      where.dueDate = { lte: endOfDay(d15) };
+    } else if (filterType === "OVERDUE_1M") {
+      const d1m_end = subDays(now, 1);
+      const d1m_start = subDays(now, 30);
+      where.dueDate = { gte: startOfDay(d1m_start), lte: endOfDay(d1m_end) };
+    } else if (filterType === "OVERDUE_2M") {
+      const d2m_end = subDays(now, 31);
+      const d2m_start = subDays(now, 60);
+      where.dueDate = { gte: startOfDay(d2m_start), lte: endOfDay(d2m_end) };
+    } else if (filterType === "OVERDUE_3M") {
+      const d3m_end = subDays(now, 61);
+      const d3m_start = subDays(now, 90);
+      where.dueDate = { gte: startOfDay(d3m_start), lte: endOfDay(d3m_end) };
+    } else if (filterType === "OVERDUE_4M_PLUS") {
+      const d4m_end = subDays(now, 91);
+      where.dueDate = { lte: endOfDay(d4m_end) };
     } else if (filterType === "ALL_OVERDUE") {
       where.dueDate = { lt: todayStart };
     }

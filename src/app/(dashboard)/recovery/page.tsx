@@ -82,10 +82,10 @@ export default function RecoveryWorkspacePage() {
 
   const tabs = [
     { id: "DUE_TODAY", label: "Due Today", icon: CalendarCheck, color: "text-amber-500" },
-    { id: "OVERDUE_1D", label: "1 Day Overdue", icon: AlertTriangle, color: "text-orange-500" },
-    { id: "OVERDUE_3D", label: "3 Days Overdue", icon: AlertTriangle, color: "text-rose-500" },
-    { id: "OVERDUE_7D", label: "7 Days Overdue", icon: AlertTriangle, color: "text-red-600" },
-    { id: "OVERDUE_15D", label: "15+ Days Overdue", icon: AlertTriangle, color: "text-red-800" },
+    { id: "OVERDUE_1M", label: "1 Month Overdue", icon: AlertTriangle, color: "text-orange-500" },
+    { id: "OVERDUE_2M", label: "2 Months Overdue", icon: AlertTriangle, color: "text-rose-500" },
+    { id: "OVERDUE_3M", label: "3 Months Overdue", icon: AlertTriangle, color: "text-red-600" },
+    { id: "OVERDUE_4M_PLUS", label: "4+ Months Overdue", icon: AlertTriangle, color: "text-red-800" },
   ];
 
   return (
@@ -244,7 +244,7 @@ export default function RecoveryWorkspacePage() {
                 <th className="py-3 px-4">Branch</th>
                 <th className="py-3 px-4">EMI Amount</th>
                 <th className="py-3 px-4">Balance</th>
-                <th className="py-3 px-4">Days Overdue</th>
+                <th className="py-3 px-4">Months Overdue</th>
                 <th className="py-3 px-4">Officer</th>
                 <th className="py-3 px-4 text-right">Action</th>
               </tr>
@@ -285,7 +285,12 @@ export default function RecoveryWorkspacePage() {
                       Rs. {t.balance?.toLocaleString()}
                     </td>
                     <td className="py-3 px-4 font-semibold text-amber-600 dark:text-amber-400">
-                      {t.daysOverdue > 0 ? `${t.daysOverdue} days` : "Due Today"}
+                      {t.daysOverdue > 0 ? (
+                        <div>
+                          <span className="block">{t.monthsOverdue} Months</span>
+                          <span className="block text-[10px] text-slate-400">({t.daysOverdue} days)</span>
+                        </div>
+                      ) : "Due Today"}
                     </td>
                     <td className="py-3 px-4 text-slate-500">{t.recoveryPerson || "Unassigned"}</td>
                     <td className="py-3 px-4 text-right">
