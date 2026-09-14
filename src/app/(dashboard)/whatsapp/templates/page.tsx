@@ -57,7 +57,7 @@ export default function TemplatesPage() {
     setType("DUE_TODAY");
     setLanguage("ROMAN_URDU");
     setBody(
-      "Assalam-o-Alaikum {{customer_name}},\n\nAap ki Rs. {{emi}} qist ki due date {{due_date}} hai (Account: {{account}}).\nBarah-e-karam waqt par payment clear karein.\n\nShukriya,\n{{recovery_person}}\nQistBazar"
+      `URGENT RECOVERY NOTICE\nMohtaram {{customer_name}},\n\nAap ki Rs. {{emi}} qist ki due date {{due_date}} hai (Account: {{account}}).\nBarah-e-karam waqt par payment clear karein.\n\nShukriya,\n{{recovery_person}}\n-------------------------\nفوری ریکوری نوٹس\nمحترم {{customer_name}}،\n\nآپ کی قسط (Rs. {{emi}}) کی مقررہ تاریخ {{due_date}} ہے (اکاؤنٹ: {{account}})۔\nبراہِ کرم وقت پر ادائیگی یقینی بنائیں۔\n\nشکریہ،\n{{recovery_person}}`
     );
     setIsActive(true);
     setModalOpen(true);
