@@ -349,7 +349,29 @@ export default function CustomersPage() {
     const branch = cust.branch || "Branch";
 
     setMessageText(
-      `فوری ریکوری نوٹس\n\nمحترم ${cust.customerName}،\n\nآپ کا اکاؤنٹ نمبر ${cust.account} ابھی تک غیر ادا شدہ / واجب الادا ہے۔\n\nپروڈکٹ: ${productName}\nبرانچ: ${branch}\n\nبراہِ کرم اپنی بقایا قسط فوری طور پر ادا کریں اور آن لائن ادائیگی کی صورت میں ادائیگی کی تصدیق فراہم کریں، یا برانچ وزٹ کرکے اپنا اکاؤنٹ ریگولرائز کروائیں۔\n\nاہم اطلاع: اگر آپ نے مقررہ وقت پر قسط ادا نہ کی تو آپ کی eCIB/کریڈٹ ہسٹری متاثر ہو سکتی ہے، جس کی وجہ سے مستقبل میں فنانسنگ حاصل کرنے میں مشکلات پیش آ سکتی ہیں۔ مزید برآں، کمپنی پالیسی اور قابلِ اطلاق قانون کے مطابق قانونی کارروائی بھی کی جا سکتی ہے۔\n\nQistbazar Recovery Officer\nGhulam Ahmad Razzaqi`
+      `URGENT RECOVERY NOTICE
+Mohtaram ${cust.customerName},
+Aap ka Account No. ${cust.account} abhi tak unpaid/overdue hai.
+Product: ${productName}
+Branch: ${branch}
+
+Barah-e-karam apni pending qist foran ada karein aur payment online bhejne ki surat mein confirmation share karein, ya branch visit karke apna account regularize karwain.
+Important: Agar aap ne waqt par qist ada na ki to aap ki eCIB/credit history mutasir ho sakti hai, jis ki wajah se mustaqbil mein financing hasil karne mein mushkil paish aa sakti hai. Mazeed, company policy aur applicable law ke mutabiq legal action bhi liya ja sakta hai.
+
+Qistbazar Recovery Officer
+Ghulam Ahmad Razzaqi
+-------------------------
+فوری ریکوری نوٹس
+محترم ${cust.customerName}،
+آپ کا اکاؤنٹ نمبر ${cust.account} ابھی تک غیر ادا شدہ / واجب الادا ہے۔
+پروڈکٹ: ${productName}
+برانچ: ${branch}
+
+براہِ کرم اپنی بقایا قسط فوری طور پر ادا کریں اور آن لائن ادائیگی کی صورت میں ادائیگی کی تصدیق فراہم کریں، یا برانچ وزٹ کرکے اپنا اکاؤنٹ ریگولرائز کروائیں۔
+اہم اطلاع: اگر آپ نے مقررہ وقت پر قسط ادا نہ کی تو آپ کی eCIB/کریڈٹ ہسٹری متاثر ہو سکتی ہے، جس کی وجہ سے مستقبل میں فنانسنگ حاصل کرنے میں مشکلات پیش آ سکتی ہیں۔ مزید برآں، کمپنی پالیسی اور قابلِ اطلاق قانون کے مطابق قانونی کارروائی بھی کی جا سکتی ہے۔
+
+Qistbazar Recovery Officer
+Ghulam Ahmad Razzaqi`
     );
     setRecipientType("CUSTOMER");
     setSendResult(null);

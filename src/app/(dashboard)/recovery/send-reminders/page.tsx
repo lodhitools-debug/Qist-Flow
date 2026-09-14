@@ -39,7 +39,7 @@ function BulkReminderWizardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const initialFilter = searchParams.get("filter") || "DUE_TODAY";
+  const initialFilter = searchParams.get("filter") || "OVERDUE_1M";
 
   // Step Control (1: Select Customers, 2: Choose Template & Preview, 3: Confirmation / Dispatched)
   const [step, setStep] = useState<number>(1);
@@ -236,8 +236,6 @@ function BulkReminderWizardContent() {
                 onChange={(e) => setFilterType(e.target.value)}
                 className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 font-semibold"
               >
-                <option value="DUE_TODAY">Due Today Customers</option>
-                <option value="UPCOMING_1D">Upcoming (1 Day Before Due)</option>
                 <option value="OVERDUE_1M">1 Month Overdue</option>
                 <option value="OVERDUE_2M">2 Months Overdue</option>
                 <option value="OVERDUE_3M">3 Months Overdue</option>
