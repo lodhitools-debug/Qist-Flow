@@ -241,6 +241,7 @@ function BulkReminderWizardContent() {
                 <option value="OVERDUE_3M">3 Months Overdue</option>
                 <option value="OVERDUE_4M_PLUS">4+ Months Overdue</option>
                 <option value="ALL_OVERDUE">All Overdue Accounts</option>
+                <option value="UPCOMING">Upcoming / Not Yet Due</option>
               </select>
 
               <select

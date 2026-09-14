@@ -59,6 +59,8 @@ export async function GET(req: NextRequest) {
     } else if (filterType === "OVERDUE_4M_PLUS") {
       const d4m_end = subDays(now, 91);
       where.dueDate = { lte: endOfDay(d4m_end) };
+    } else if (filterType === "UPCOMING") {
+      where.dueDate = { gt: todayEnd };
     } else if (filterType === "ALL_OVERDUE") {
       where.dueDate = { lt: todayStart };
     }
