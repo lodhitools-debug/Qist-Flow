@@ -238,10 +238,10 @@ function BulkReminderWizardContent() {
               >
                 <option value="DUE_TODAY">Due Today Customers</option>
                 <option value="UPCOMING_1D">Upcoming (1 Day Before Due)</option>
-                <option value="OVERDUE_1D">1 Day Overdue</option>
-                <option value="OVERDUE_3D">3 Days Overdue</option>
-                <option value="OVERDUE_7D">7 Days Overdue (Urgent)</option>
-                <option value="OVERDUE_15D">15+ Days Overdue</option>
+                <option value="OVERDUE_1M">1 Month Overdue</option>
+                <option value="OVERDUE_2M">2 Months Overdue</option>
+                <option value="OVERDUE_3M">3 Months Overdue</option>
+                <option value="OVERDUE_4M_PLUS">4+ Months Overdue</option>
                 <option value="ALL_OVERDUE">All Overdue Accounts</option>
               </select>
 
