@@ -81,32 +81,36 @@ Qistbazar Recovery Officer:
 ];
 
 async function main() {
-  console.log("Upserting templates...");
+  console.log("Fetching all tenants...");
+  const tenants = await prisma.tenant.findMany();
+  console.log(`Found ${tenants.length} tenants. Upserting templates for each...`);
   
-  for (const t of DEFAULT_TEMPLATES) {
-    await prisma.messageTemplate.upsert({
-      where: { 
-        slug_tenantId: { 
-          slug: t.slug, 
-          tenantId: 'default' 
-        } 
-      },
-      update: {
-        name: t.name,
-        type: t.type,
-        language: t.language,
-        body: t.body,
-        isActive: true,
-      },
-      create: {
-        ...t,
-        tenantId: 'default',
-        isActive: true,
-      }
-    });
+  for (const tenant of tenants) {
+    for (const t of DEFAULT_TEMPLATES) {
+      await prisma.messageTemplate.upsert({
+        where: { 
+          slug_tenantId: { 
+            slug: t.slug, 
+            tenantId: tenant.id 
+          } 
+        },
+        update: {
+          name: t.name,
+          type: t.type,
+          language: t.language,
+          body: t.body,
+          isActive: true,
+        },
+        create: {
+          ...t,
+          tenantId: tenant.id,
+          isActive: true,
+        }
+      });
+    }
   }
   
-  console.log("Templates successfully updated in database!");
+  console.log("Templates successfully updated in database for all tenants!");
 }
 
 main()
