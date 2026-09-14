@@ -94,6 +94,29 @@ export default function TemplatesPage() {
     }
   };
 
+  const handleDeleteTemplate = async (tmpl: any) => {
+    if (tmpl._count?.reminderRules > 0) {
+      alert("Cannot delete this template because it is being used by automated rules. Please remove or change the rules first.");
+      return;
+    }
+    if (!confirm(`Are you sure you want to delete the template "${tmpl.name}"?`)) return;
+    
+    try {
+      const res = await fetch(`/api/templates/${tmpl.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        fetchTemplates();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to delete template");
+      }
+    } catch (err) {
+      console.error("Failed to delete template", err);
+      alert("An error occurred");
+    }
+  };
+
   const insertVariable = (token: string) => {
     setBody((prev) => prev + " " + token);
   };
@@ -185,6 +208,13 @@ export default function TemplatesPage() {
                   {tmpl._count?.reminderRules || 0} automated rule(s)
                 </span>
                 <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => handleDeleteTemplate(tmpl)}
+                    className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                    title="Delete Template"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                   <button
                     onClick={() => openEditModal(tmpl)}
                     className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
