@@ -237,7 +237,7 @@ export default function CustomerDetailPage() {
     const inst = customer.installments?.[0];
     const dueStr = inst?.dueDate ? new Date(inst.dueDate).toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" }) : "N/A";
 
-    const defaultFirstNotice = `Assalam-o-Alaikum ${gName},\n\nYeh paigham aap ko bataur Zamanat-daar (Guarantor) bhaija ja raha hai.\n\nCustomer: ${customer.customerName}\nAccount: ${customer.account}\nPending Amount: Rs. ${inst?.balance || 0}\nDue Date: ${dueStr}\n\nBarah-e-karam customer se rabta kar ke unhein un ki pending qist ada karne ki yad-dihani karwayein.\n\nShukriya,\n${customer.recoveryPerson || "QistFlow Recovery Team"}`;
+    const defaultFirstNotice = `فوری ریکوری نوٹس برائے ضامن\n\nمحترم ${gName}،\n\nیہ پیغام آپ کو بطور ضمانت دار (Guarantor) بھیجا جا رہا ہے۔\n\nکسٹمر: ${customer.customerName}\nاکاؤنٹ: ${customer.account}\nبقایا رقم: Rs. ${inst?.balance || 0}\nبرانچ: ${customer.branch || "Branch"}\n\nبراہِ کرم کسٹمر سے رابطہ کر کے انہیں ان کی بقایا قسط ادا کرنے کی یاد دہانی کروائیں۔ اگر کسٹمر ادائیگی نہیں کرتا، تو بطور ضامن یہ رقم ادا کرنا آپ کی ذمہ داری ہوگی۔\n\nQistbazar Recovery Officer\nGhulam Ahmad Razzaqi`;
     setGuarantorCustomMsg(defaultFirstNotice);
     setGuarantorMsgNotice(null);
     setGuarantorModalOpen(true);
@@ -251,11 +251,11 @@ export default function CustomerDetailPage() {
 
     let text = "";
     if (type === "GUARANTOR_FIRST_NOTICE") {
-      text = `Assalam-o-Alaikum ${gName},\n\nYeh paigham aap ko bataur Zamanat-daar (Guarantor) bhaija ja raha hai.\n\nCustomer: ${customer.customerName}\nAccount: ${customer.account}\nPending Amount: Rs. ${inst?.balance || 0}\nDue Date: ${dueStr}\n\nBarah-e-karam customer se rabta kar ke unhein un ki pending qist ada karne ki yad-dihani karwayein.\n\nShukriya,\n${customer.recoveryPerson || "QistFlow Recovery Team"}`;
+      text = `فوری ریکوری نوٹس برائے ضامن\n\nمحترم ${gName}،\n\nیہ پیغام آپ کو بطور ضمانت دار (Guarantor) بھیجا جا رہا ہے۔\n\nکسٹمر: ${customer.customerName}\nاکاؤنٹ: ${customer.account}\nبقایا رقم: Rs. ${inst?.balance || 0}\nبرانچ: ${customer.branch || "Branch"}\n\nبراہِ کرم کسٹمر سے رابطہ کر کے انہیں ان کی بقایا قسط ادا کرنے کی یاد دہانی کروائیں۔ اگر کسٹمر ادائیگی نہیں کرتا، تو بطور ضامن یہ رقم ادا کرنا آپ کی ذمہ داری ہوگی۔\n\nQistbazar Recovery Officer\nGhulam Ahmad Razzaqi`;
     } else if (type === "GUARANTOR_FOLLOWUP") {
-      text = `Yad-dihani Paigham - Zamanat\n\nAssalam-o-Alaikum ${gName},\n\n${customer.customerName} ke account (${customer.account}) ki installment unpaid hai.\n\nAap is account ke guarantor hain. Barah-e-karam fori tor par customer se baat kar ke payment schedule confirm karwayein.\n\nPending Balance: Rs. ${inst?.balance || 0}\nRecovery Officer: ${customer.recoveryPerson || "QistFlow Team"}`;
+      text = `فالو اپ نوٹس برائے ضامن\n\nمحترم ${gName}،\n\nاس سے قبل آپ کو کسٹمر ${customer.customerName} (اکاؤنٹ: ${customer.account}) کی بقایا رقم کے حوالے سے مطلع کیا گیا تھا۔ ابھی تک قسط ادا نہیں کی گئی۔\n\nبراہِ کرم فوری طور پر کسٹمر کو ادائیگی کا کہیں۔\n\nQistbazar Recovery`;
     } else {
-      text = `IMPORTANT NOTICE - GUARANTOR OBLIGATION\n\nMuazzaz ${gName},\n\n${customer.customerName} (Account: ${customer.account}) ka account overdue chal raha hai aur mutaddad koshishon ke bawajood payment masool nahi hui.\n\nBataur Guarantor aap ki zimadari hai ke customer se rabta kar ke mamla fori hal karwayein.\n\nTotal Balance: Rs. ${inst?.balance || 0}\nRecovery Contact: ${customer.recoveryPerson || "Recovery Department"}`;
+      text = `حتمی نوٹس برائے ضامن\n\nمحترم ${gName}،\n\nیہ کسٹمر ${customer.customerName} (اکاؤنٹ: ${customer.account}) کی بقایا قسط کے حوالے سے آخری وارننگ ہے۔ چونکہ آپ ان کے ضامن ہیں، ادائیگی نہ ہونے کی صورت میں کمپنی کے قوانین کے مطابق آپ کے خلاف بھی قانونی کارروائی عمل میں لائی جا سکتی ہے۔\n\nQistbazar Recovery`;
     }
     setGuarantorCustomMsg(text);
   };
@@ -434,7 +434,7 @@ export default function CustomerDetailPage() {
           <button
             onClick={() => {
               setCustomMsg(
-                `Assalam-o-Alaikum ${customer.customerName},\n\nAap ki Rs. ${inst?.emi || 0} qist ki due date ${dueStr} hai (Account: ${customer.account}).\nRemaining Balance: Rs. ${inst?.balance || 0}.\n\nBarah-e-karam waqt par payment clear karein.\nShukriya,\nQistBazar Recovery`
+                `فوری ریکوری نوٹس\n\nمحترم ${customer.customerName}،\n\nآپ کا اکاؤنٹ نمبر ${customer.account} ابھی تک غیر ادا شدہ / واجب الادا ہے۔\n\nپروڈکٹ: ${customer.productName || "Product"}\nبرانچ: ${customer.branch || "Branch"}\n\nبراہِ کرم اپنی بقایا قسط فوری طور پر ادا کریں اور آن لائن ادائیگی کی صورت میں ادائیگی کی تصدیق فراہم کریں، یا برانچ وزٹ کرکے اپنا اکاؤنٹ ریگولرائز کروائیں۔\n\nاہم اطلاع: اگر آپ نے مقررہ وقت پر قسط ادا نہ کی تو آپ کی eCIB/کریڈٹ ہسٹری متاثر ہو سکتی ہے، جس کی وجہ سے مستقبل میں فنانسنگ حاصل کرنے میں مشکلات پیش آ سکتی ہیں۔ مزید برآں، کمپنی پالیسی اور قابلِ اطلاق قانون کے مطابق قانونی کارروائی بھی کی جا سکتی ہے۔\n\nQistbazar Recovery Officer\nGhulam Ahmad Razzaqi`
               );
               setMsgOpen(true);
             }}
