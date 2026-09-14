@@ -46,7 +46,7 @@ function BulkReminderWizardContent() {
 
   const [filterType, setFilterType] = useState(initialFilter);
   const [branch, setBranch] = useState("ALL");
-  const [recipientType, setRecipientType] = useState("CUSTOMER"); // CUSTOMER, GUARANTOR, BOTH
+  const [activeTab, setActiveTab] = useState<"CUSTOMER" | "GUARANTOR_1">("CUSTOMER");
   const [targets, setTargets] = useState<any[]>([]);
   const [loadingTargets, setLoadingTargets] = useState(true);
 
@@ -83,6 +83,7 @@ function BulkReminderWizardContent() {
         filterType,
         branch,
         templateId: selectedTemplateId,
+        recipientType: activeTab,
       });
 
       const res = await fetch(`/api/recovery/targets?${params.toString()}`);
@@ -102,7 +103,7 @@ function BulkReminderWizardContent() {
 
   useEffect(() => {
     fetchTargets();
-  }, [filterType, branch, selectedTemplateId]);
+  }, [filterType, branch, selectedTemplateId, activeTab]);
 
   const toggleSelect = (id: string) => {
     const next = new Set(selectedIds);
@@ -137,7 +138,7 @@ function BulkReminderWizardContent() {
           messageText: t.messageText || t.previewMessage,
         };
 
-        if (recipientType === "CUSTOMER" || recipientType === "BOTH") {
+        if (activeTab === "CUSTOMER") {
           items.push({
             ...baseItem,
             recipientPhone: t.primaryPhone,
@@ -146,7 +147,7 @@ function BulkReminderWizardContent() {
           });
         }
         
-        if ((recipientType === "GUARANTOR" || recipientType === "BOTH") && t.guarantor1Phone) {
+        if (activeTab === "GUARANTOR_1" && t.guarantor1Phone) {
           items.push({
             ...baseItem,
             recipientPhone: t.guarantor1Phone,
@@ -167,7 +168,7 @@ function BulkReminderWizardContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items,
-          batchLabel: `Bulk ${filterType} Campaign (${recipientType})`,
+          batchLabel: `Bulk ${filterType} Campaign (${activeTab})`,
         }),
       });
 
@@ -228,6 +229,38 @@ function BulkReminderWizardContent() {
       {/* STEP 1: Select Target Customers */}
       {step === 1 && (
         <div className="space-y-4 animate-in fade-in">
+          {/* Top Tabs */}
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl w-max">
+            <button
+              onClick={() => {
+                setActiveTab("CUSTOMER");
+                setSelectedIds(new Set());
+              }}
+              className={clsx(
+                "px-6 py-2 text-sm font-bold rounded-lg transition-all",
+                activeTab === "CUSTOMER"
+                  ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              Customer Campaign
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("GUARANTOR_1");
+                setSelectedIds(new Set());
+              }}
+              className={clsx(
+                "px-6 py-2 text-sm font-bold rounded-lg transition-all",
+                activeTab === "GUARANTOR_1"
+                  ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              Guarantor Campaign
+            </button>
+          </div>
+
           {/* Filters Bar */}
           <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
@@ -289,8 +322,8 @@ function BulkReminderWizardContent() {
                       </button>
                     </th>
                     <th className="py-3 px-4">Account</th>
-                    <th className="py-3 px-4">Customer Name</th>
-                    <th className="py-3 px-4">Phone</th>
+                    <th className="py-3 px-4">{activeTab === "CUSTOMER" ? "Customer" : "Guarantor"} Name</th>
+                    <th className="py-3 px-4">{activeTab === "CUSTOMER" ? "Customer" : "Guarantor"} Phone</th>
                     <th className="py-3 px-4">Branch</th>
                     <th className="py-3 px-4">EMI Amount</th>
                     <th className="py-3 px-4">Balance</th>
@@ -337,10 +370,10 @@ function BulkReminderWizardContent() {
                             {t.account}
                           </td>
                           <td className="py-3 px-4 font-semibold text-slate-800 dark:text-slate-200">
-                            {t.customerName}
+                            {activeTab === "CUSTOMER" ? t.customerName : t.guarantor1Name || "N/A"}
                           </td>
                           <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-300">
-                            {formatDisplayPhone(t.primaryPhone)}
+                            {formatDisplayPhone(activeTab === "CUSTOMER" ? t.primaryPhone : t.guarantor1Phone)}
                           </td>
                           <td className="py-3 px-4 text-slate-500">{t.branch}</td>
                           <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
@@ -379,41 +412,6 @@ function BulkReminderWizardContent() {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3">
-                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                  <button
-                    onClick={() => setRecipientType("CUSTOMER")}
-                    className={clsx(
-                      "px-4 py-1.5 text-xs font-bold rounded-lg transition-all",
-                      recipientType === "CUSTOMER"
-                        ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
-                        : "text-slate-500 hover:text-slate-700"
-                    )}
-                  >
-                    Customer Only
-                  </button>
-                  <button
-                    onClick={() => setRecipientType("GUARANTOR")}
-                    className={clsx(
-                      "px-4 py-1.5 text-xs font-bold rounded-lg transition-all",
-                      recipientType === "GUARANTOR"
-                        ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
-                        : "text-slate-500 hover:text-slate-700"
-                    )}
-                  >
-                    Guarantor Only
-                  </button>
-                  <button
-                    onClick={() => setRecipientType("BOTH")}
-                    className={clsx(
-                      "px-4 py-1.5 text-xs font-bold rounded-lg transition-all",
-                      recipientType === "BOTH"
-                        ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
-                        : "text-slate-500 hover:text-slate-700"
-                    )}
-                  >
-                    Send to Both
-                  </button>
-                </div>
                 <select
                   value={selectedTemplateId}
                   onChange={(e) => setSelectedTemplateId(e.target.value)}
@@ -459,14 +457,14 @@ function BulkReminderWizardContent() {
                       </span>
                     </div>
                     
-                    {(recipientType === "CUSTOMER" || recipientType === "BOTH") && (
+                    {activeTab === "CUSTOMER" && (
                       <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2 rounded text-xs mb-1">
                         <span className="text-slate-500">Customer:</span>
                         <span className="font-mono font-bold">{formatDisplayPhone(cust.primaryPhone)}</span>
                       </div>
                     )}
 
-                    {(recipientType === "GUARANTOR" || recipientType === "BOTH") && (
+                    {activeTab === "GUARANTOR_1" && (
                       <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 p-2 rounded text-xs">
                         <span className="text-amber-700 dark:text-amber-500">Guarantor ({cust.guarantor1Name || 'N/A'}):</span>
                         <span className="font-mono font-bold text-amber-700 dark:text-amber-500">

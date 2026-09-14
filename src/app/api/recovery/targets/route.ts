@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     const branch = searchParams.get("branch") || "";
     const recoveryPerson = searchParams.get("recoveryPerson") || "";
     const templateId = searchParams.get("templateId") || "";
+    const recipientType = searchParams.get("recipientType") || "CUSTOMER";
 
     const now = new Date();
     const todayStart = startOfDay(now);
@@ -115,7 +116,11 @@ export async function GET(req: NextRequest) {
         });
       } else {
         const dueDateStr = inst.dueDate ? new Date(inst.dueDate).toLocaleDateString("en-PK") : "N/A";
-        messageText = `Assalam-o-Alaikum ${cust.customerName},\n\nAap ki Rs. ${inst.emi.toLocaleString()} qist ki due date ${dueDateStr} hai (Account: ${cust.account}).\nRemaining Balance: Rs. ${inst.balance.toLocaleString()}.\n\nBarah-e-karam waqt par payment clear karein.\nShukriya,\nQistBazar Recovery`;
+        if (recipientType === "GUARANTOR_1") {
+          messageText = `Assalam-o-Alaikum ${cust.guarantor1Name || "Zamanat-daar"},\n\n${cust.customerName} ke account number ${cust.account} ki qist overdue hai. Barah-e-karam payment clear karwayein.\nShukriya,\nQistBazar Recovery`;
+        } else {
+          messageText = `Assalam-o-Alaikum ${cust.customerName},\n\nAap ki Rs. ${inst.emi.toLocaleString()} qist ki due date ${dueDateStr} hai (Account: ${cust.account}).\nRemaining Balance: Rs. ${inst.balance.toLocaleString()}.\n\nBarah-e-karam waqt par payment clear karein.\nShukriya,\nQistBazar Recovery`;
+        }
       }
 
       return {
