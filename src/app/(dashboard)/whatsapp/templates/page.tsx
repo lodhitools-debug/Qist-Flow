@@ -18,6 +18,7 @@ export default function TemplatesPage() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [variables, setVariables] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"ACTIVE" | "DRAFT">("ACTIVE");
 
   // Edit / Create Modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -99,7 +100,8 @@ export default function TemplatesPage() {
       alert("Cannot delete this template because it is being used by automated rules. Please remove or change the rules first.");
       return;
     }
-    if (!confirm(`Are you sure you want to delete the template "${tmpl.name}"?`)) return;
+    const action = tmpl.isActive ? "move this template to drafts" : "permanently delete this template";
+    if (!confirm(`Are you sure you want to ${action} "${tmpl.name}"?`)) return;
     
     try {
       const res = await fetch(`/api/templates/${tmpl.id}`, {
@@ -114,6 +116,24 @@ export default function TemplatesPage() {
     } catch (err) {
       console.error("Failed to delete template", err);
       alert("An error occurred");
+    }
+  };
+
+  const handleRestoreTemplate = async (tmpl: any) => {
+    try {
+      const res = await fetch(`/api/templates/${tmpl.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...tmpl, isActive: true }),
+      });
+      if (res.ok) {
+        fetchTemplates();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to restore template");
+      }
+    } catch (err) {
+      console.error("Failed to restore", err);
     }
   };
 
@@ -157,6 +177,31 @@ export default function TemplatesPage() {
         </button>
       </div>
 
+      <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab("ACTIVE")}
+          className={clsx(
+            "px-4 py-1.5 text-xs font-bold rounded-lg transition-all",
+            activeTab === "ACTIVE"
+              ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
+              : "text-slate-500 hover:text-slate-700"
+          )}
+        >
+          Active Templates
+        </button>
+        <button
+          onClick={() => setActiveTab("DRAFT")}
+          className={clsx(
+            "px-4 py-1.5 text-xs font-bold rounded-lg transition-all",
+            activeTab === "DRAFT"
+              ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+              : "text-slate-500 hover:text-slate-700"
+          )}
+        >
+          Drafts / Trash
+        </button>
+      </div>
+
       {/* Templates Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {loading ? (
@@ -164,12 +209,12 @@ export default function TemplatesPage() {
             <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
             <span>Loading templates...</span>
           </div>
-        ) : templates.length === 0 ? (
+        ) : templates.filter((t) => (activeTab === "ACTIVE" ? t.isActive : !t.isActive)).length === 0 ? (
           <div className="col-span-full py-16 text-center text-slate-400">
-            No templates configured yet. Click "New Template" to add one.
+            No templates found in {activeTab === "ACTIVE" ? "Active" : "Drafts"}.
           </div>
         ) : (
-          templates.map((tmpl) => (
+          templates.filter((t) => (activeTab === "ACTIVE" ? t.isActive : !t.isActive)).map((tmpl) => (
             <div
               key={tmpl.id}
               className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm flex flex-col justify-between space-y-4 hover:border-emerald-500/40 transition-colors"
@@ -208,10 +253,19 @@ export default function TemplatesPage() {
                   {tmpl._count?.reminderRules || 0} automated rule(s)
                 </span>
                 <div className="flex items-center gap-1.5">
+                  {!tmpl.isActive && (
+                    <button
+                      onClick={() => handleRestoreTemplate(tmpl)}
+                      className="p-1.5 rounded-lg text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
+                      title="Restore to Active"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     onClick={() => handleDeleteTemplate(tmpl)}
                     className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
-                    title="Delete Template"
+                    title={tmpl.isActive ? "Move to Draft" : "Delete Permanently"}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

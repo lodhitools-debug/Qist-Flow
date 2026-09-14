@@ -16,6 +16,7 @@ import {
   Clock,
   Sparkles,
   ShieldCheck,
+  Copy,
 } from "lucide-react";
 import clsx from "clsx";
 import { formatDisplayPhone } from "@/lib/excel/mapper";
@@ -476,9 +477,19 @@ function BulkReminderWizardContent() {
                     )}
                   </div>
                   
-                  <p className="text-[11px] text-slate-700 dark:text-slate-300 whitespace-pre-line bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg mt-2">
-                    {cust.messageText}
-                  </p>
+                  <div className="relative group">
+                    <p className="text-[11px] text-slate-700 dark:text-slate-300 whitespace-pre-line bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg mt-2 min-h-[80px]">
+                      {cust.messageText}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard.writeText(cust.messageText)}
+                      className="absolute top-2 right-2 p-1.5 rounded-md bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity shadow border border-slate-200 dark:border-slate-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/50"
+                      title="Copy Message"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

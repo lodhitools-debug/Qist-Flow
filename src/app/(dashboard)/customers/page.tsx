@@ -111,6 +111,7 @@ export default function CustomersPage() {
   const [messageText, setMessageText] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
   const [sendResult, setSendResult] = useState<string | null>(null);
+  const [recipientType, setRecipientType] = useState<"CUSTOMER" | "GUARANTOR">("CUSTOMER");
 
   // Quick Pay Modal State
   const [quickPayCust, setQuickPayCust] = useState<any>(null);
@@ -347,6 +348,7 @@ export default function CustomersPage() {
     setMessageText(
       `Assalam-o-Alaikum ${cust.customerName},\n\nAap ki Rs. ${emi.toLocaleString()} qist ki due date ${dueDate} hai (Account: ${cust.account}).\nRemaining Balance: Rs. ${balance.toLocaleString()}.\n\nBarah-e-karam payment jald az jald clear karein.\nShukriya,\nQistBazar Recovery`
     );
+    setRecipientType("CUSTOMER");
     setSendResult(null);
   };
 
@@ -356,12 +358,20 @@ export default function CustomersPage() {
     try {
       setSendingMessage(true);
       setSendResult(null);
+      
+      const phone = recipientType === "GUARANTOR" ? selectedCust.guarantor1Phone : selectedCust.primaryPhone;
+      
+      if (!phone) {
+        setSendResult("Error: No phone number available for the selected recipient type.");
+        setSendingMessage(false);
+        return;
+      }
 
       const res = await fetch("/api/whatsapp/send-manual", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone: selectedCust.primaryPhone,
+          phone,
           message: messageText,
           customerId: selectedCust.id,
         }),
@@ -1205,9 +1215,30 @@ export default function CustomersPage() {
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                     Fast WhatsApp Reminder
                   </h3>
-                  <p className="text-[11px] text-slate-400">
-                    Recipient: <strong className="font-mono text-emerald-500">{selectedCust.primaryPhone}</strong>
-                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <button
+                      onClick={() => setRecipientType("CUSTOMER")}
+                      className={clsx(
+                        "px-2.5 py-0.5 text-[10px] font-bold rounded-lg transition-all border",
+                        recipientType === "CUSTOMER"
+                          ? "bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900 dark:border-emerald-700"
+                          : "bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-800 dark:border-slate-700 hover:bg-slate-100"
+                      )}
+                    >
+                      Customer ({selectedCust.primaryPhone || "N/A"})
+                    </button>
+                    <button
+                      onClick={() => setRecipientType("GUARANTOR")}
+                      className={clsx(
+                        "px-2.5 py-0.5 text-[10px] font-bold rounded-lg transition-all border",
+                        recipientType === "GUARANTOR"
+                          ? "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900 dark:border-amber-700"
+                          : "bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-800 dark:border-slate-700 hover:bg-slate-100"
+                      )}
+                    >
+                      Guarantor ({selectedCust.guarantor1Phone || "N/A"})
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1250,22 +1281,35 @@ export default function CustomersPage() {
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex items-center justify-between pt-2">
               <button
                 type="button"
-                onClick={() => setSelectedCust(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 min-h-[44px]"
+                onClick={() => {
+                  navigator.clipboard.writeText(messageText);
+                  setSendResult("✓ Message copied to clipboard");
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 min-h-[44px]"
               >
-                Cancel
+                Copy Text
               </button>
-              <button
-                type="button"
-                disabled={sendingMessage || !messageText}
-                onClick={handleSendSingleMessage}
-                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 disabled:opacity-50 flex items-center gap-1.5 min-h-[44px]"
-              >
-                {sendingMessage ? "Queuing..." : "Dispatch Message"}
-              </button>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCust(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 min-h-[44px]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={sendingMessage || !messageText}
+                  onClick={handleSendSingleMessage}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 disabled:opacity-50 flex items-center gap-1.5 min-h-[44px]"
+                >
+                  {sendingMessage ? "Queuing..." : "Dispatch Message"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

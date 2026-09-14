@@ -48,19 +48,41 @@ export async function DELETE(
       return NextResponse.json({ error: "Only admins can delete templates" }, { status: 403 });
     }
 
-    const deleted = await prisma.messageTemplate.delete({
-      where: { id: params.id },
-    });
+    const template = await prisma.messageTemplate.findUnique({ where: { id: params.id } });
+    if (!template) {
+      return NextResponse.json({ error: "Template not found" }, { status: 404 });
+    }
 
-    await logActivity({
-      userId: session?.userId,
-      action: "TEMPLATE_CHANGE",
-      entityType: "MessageTemplate",
-      entityId: params.id,
-      details: { action: "DELETE", name: deleted.name },
-    });
+    if (template.isActive) {
+      const updated = await prisma.messageTemplate.update({
+        where: { id: params.id },
+        data: { isActive: false },
+      });
 
-    return NextResponse.json({ success: true, message: "Template deleted successfully" });
+      await logActivity({
+        userId: session?.userId,
+        action: "TEMPLATE_CHANGE",
+        entityType: "MessageTemplate",
+        entityId: params.id,
+        details: { action: "SOFT_DELETE", name: updated.name },
+      });
+
+      return NextResponse.json({ success: true, message: "Template moved to drafts" });
+    } else {
+      const deleted = await prisma.messageTemplate.delete({
+        where: { id: params.id },
+      });
+
+      await logActivity({
+        userId: session?.userId,
+        action: "TEMPLATE_CHANGE",
+        entityType: "MessageTemplate",
+        entityId: params.id,
+        details: { action: "HARD_DELETE", name: deleted.name },
+      });
+
+      return NextResponse.json({ success: true, message: "Template permanently deleted" });
+    }
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to delete template" }, { status: 500 });
   }
