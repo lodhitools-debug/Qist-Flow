@@ -46,7 +46,7 @@ function GuarantorReminderWizardContent() {
 
   const [filterType, setFilterType] = useState(initialFilter);
   const [branch, setBranch] = useState("ALL");
-  const activeTab = "GUARANTOR_1";
+  const activeTab: string = "GUARANTOR_1";
   const [targets, setTargets] = useState<any[]>([]);
   const [loadingTargets, setLoadingTargets] = useState(true);
 

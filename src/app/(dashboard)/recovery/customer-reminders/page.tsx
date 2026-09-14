@@ -46,7 +46,7 @@ function CustomerReminderWizardContent() {
 
   const [filterType, setFilterType] = useState(initialFilter);
   const [branch, setBranch] = useState("ALL");
-  const activeTab = "CUSTOMER";
+  const activeTab: string = "CUSTOMER";
   const [targets, setTargets] = useState<any[]>([]);
   const [loadingTargets, setLoadingTargets] = useState(true);
 
