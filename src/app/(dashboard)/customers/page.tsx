@@ -112,6 +112,50 @@ export default function CustomersPage() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [sendResult, setSendResult] = useState<string | null>(null);
 
+  // Quick Pay Modal State
+  const [quickPayCust, setQuickPayCust] = useState<any>(null);
+  const [quickPayAmount, setQuickPayAmount] = useState<number | "">("");
+  const [quickPayLoading, setQuickPayLoading] = useState(false);
+  const [quickPayResult, setQuickPayResult] = useState<string | null>(null);
+
+  const handleOpenQuickPayModal = (cust: any) => {
+    setQuickPayCust(cust);
+    const emi = cust.installments?.[0]?.emi || 0;
+    setQuickPayAmount(emi);
+    setQuickPayResult(null);
+  };
+
+  const handleQuickPaySubmit = async () => {
+    if (!quickPayCust || !quickPayAmount) return;
+    try {
+      setQuickPayLoading(true);
+      setQuickPayResult(null);
+      const res = await fetch("/api/payments/quick-pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: quickPayCust.id,
+          installmentId: quickPayCust.installments?.[0]?.id,
+          amount: Number(quickPayAmount)
+        })
+      });
+      const data = await safeJsonParse(res);
+      if (res.ok && data.success) {
+        setQuickPayResult("✓ Payment recorded successfully");
+        setTimeout(() => {
+          setQuickPayCust(null);
+          fetchCustomers();
+        }, 1200);
+      } else {
+        setQuickPayResult("Error: " + (data.error || "Failed to record payment"));
+      }
+    } catch (err: any) {
+      setQuickPayResult("Error: " + err.message);
+    } finally {
+      setQuickPayLoading(false);
+    }
+  };
+
   // Debounce search input
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -696,7 +740,16 @@ export default function CustomersPage() {
                 </div>
 
                 {/* Action Buttons (Min 44px height for mobile touch target) */}
-                <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <div className="grid grid-cols-4 gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenQuickPayModal(cust)}
+                    className="flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 min-h-[44px]"
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Pay</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleOpenMessageModal(cust)}
@@ -991,7 +1044,15 @@ export default function CustomersPage() {
                           {cust.comment || "—"}
                         </td>
                       )}
-                      <td className="py-3.5 px-4 text-right space-x-1.5">
+                      <td className="py-3.5 px-4 text-right space-x-1.5 flex justify-end items-center">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenQuickPayModal(cust)}
+                          title="Quick Pay"
+                          className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 transition-colors"
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleOpenMessageModal(cust)}
@@ -1204,6 +1265,85 @@ export default function CustomersPage() {
                 className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 disabled:opacity-50 flex items-center gap-1.5 min-h-[44px]"
               >
                 {sendingMessage ? "Queuing..." : "Dispatch Message"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Pay Modal */}
+      {quickPayCust && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 w-full max-w-sm shadow-2xl space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-500 flex items-center justify-center">
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Quick Pay
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Account: <strong className="font-mono text-indigo-500">{quickPayCust.account}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setQuickPayCust(null)}
+                className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Payment Amount (Rs)
+              </label>
+              <input
+                type="number"
+                value={quickPayAmount}
+                onChange={(e) => setQuickPayAmount(e.target.value ? Number(e.target.value) : "")}
+                className="w-full p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-lg font-bold text-slate-800 dark:text-slate-200 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+              />
+            </div>
+
+            {quickPayResult && (
+              <div
+                className={clsx(
+                  "p-3 rounded-xl text-xs font-semibold flex items-center gap-2",
+                  quickPayResult.startsWith("Error")
+                    ? "bg-rose-50 text-rose-700 border border-rose-200"
+                    : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                )}
+              >
+                {quickPayResult.startsWith("Error") ? (
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                )}
+                <span>{quickPayResult}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setQuickPayCust(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 min-h-[44px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={quickPayLoading || !quickPayAmount}
+                onClick={handleQuickPaySubmit}
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 disabled:opacity-50 flex items-center gap-1.5 min-h-[44px]"
+              >
+                {quickPayLoading ? "Processing..." : "Confirm Payment"}
               </button>
             </div>
           </div>
