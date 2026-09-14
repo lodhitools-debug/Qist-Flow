@@ -101,7 +101,8 @@ function SidebarContent({ isOpen, onClose }: SidebarProps) {
       allowedRoles: ["ADMIN", "MANAGER", "RECOVERY_OFFICER", "SUPER_ADMIN"],
       children: [
         { title: "Recovery Workspace", href: "/recovery" },
-        { title: "Send Reminders", href: "/recovery/send-reminders", badge: "Bulk" },
+        { title: "Customer Reminders", href: "/recovery/customer-reminders", badge: "Bulk" },
+        { title: "Guarantor Reminders", href: "/recovery/guarantor-reminders", badge: "Bulk" },
         { title: "Escalation Approvals", href: "/recovery/approvals", badge: "New" },
       ],
     },

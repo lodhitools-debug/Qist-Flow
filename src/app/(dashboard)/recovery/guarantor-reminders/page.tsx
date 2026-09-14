@@ -35,7 +35,7 @@ async function safeJsonParse(res: Response): Promise<any> {
   }
 }
 
-function BulkReminderWizardContent() {
+function GuarantorReminderWizardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -46,7 +46,7 @@ function BulkReminderWizardContent() {
 
   const [filterType, setFilterType] = useState(initialFilter);
   const [branch, setBranch] = useState("ALL");
-  const [activeTab, setActiveTab] = useState<"CUSTOMER" | "GUARANTOR_1">("CUSTOMER");
+  const activeTab = "GUARANTOR_1";
   const [targets, setTargets] = useState<any[]>([]);
   const [loadingTargets, setLoadingTargets] = useState(true);
 
@@ -66,7 +66,7 @@ function BulkReminderWizardContent() {
     fetch("/api/templates")
       .then((res) => safeJsonParse(res))
       .then((data) => {
-        setTemplates(data.templates || []);
+        setTemplates((data.templates || []).filter((t: any) => t.type === "GUARANTOR_FIRST_NOTICE" || t.type === "GUARANTOR_ESCALATION"));
         if (data.templates && data.templates.length > 0) {
           // pick default based on filter
           setSelectedTemplateId(data.templates[0].id);
@@ -193,7 +193,7 @@ function BulkReminderWizardContent() {
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
             <Send className="w-5 h-5 text-emerald-500" />
-            <span>Bulk Reminder Campaign Wizard</span>
+            <span>Guarantor Reminder Campaign</span>
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
             Filter target accounts, inspect personalized Urdu preview messages, and schedule to WhatsApp queue safely.
@@ -229,38 +229,6 @@ function BulkReminderWizardContent() {
       {/* STEP 1: Select Target Customers */}
       {step === 1 && (
         <div className="space-y-4 animate-in fade-in">
-          {/* Top Tabs */}
-          <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl w-max">
-            <button
-              onClick={() => {
-                setActiveTab("CUSTOMER");
-                setSelectedIds(new Set());
-              }}
-              className={clsx(
-                "px-6 py-2 text-sm font-bold rounded-lg transition-all",
-                activeTab === "CUSTOMER"
-                  ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              )}
-            >
-              Customer Campaign
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("GUARANTOR_1");
-                setSelectedIds(new Set());
-              }}
-              className={clsx(
-                "px-6 py-2 text-sm font-bold rounded-lg transition-all",
-                activeTab === "GUARANTOR_1"
-                  ? "bg-white dark:bg-slate-700 text-emerald-600 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              )}
-            >
-              Guarantor Campaign
-            </button>
-          </div>
-
           {/* Filters Bar */}
           <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
@@ -579,7 +547,7 @@ function BulkReminderWizardContent() {
   );
 }
 
-export default function BulkReminderWizardPage() {
+export default function GuarantorReminderWizardPage() {
   return (
     <Suspense
       fallback={
@@ -589,7 +557,7 @@ export default function BulkReminderWizardPage() {
         </div>
       }
     >
-      <BulkReminderWizardContent />
+      <GuarantorReminderWizardContent />
     </Suspense>
   );
 }
