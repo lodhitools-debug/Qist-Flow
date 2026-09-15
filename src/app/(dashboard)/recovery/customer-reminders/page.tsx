@@ -66,10 +66,11 @@ function CustomerReminderWizardContent() {
     fetch("/api/templates")
       .then((res) => safeJsonParse(res))
       .then((data) => {
-        setTemplates((data.templates || []).filter((t: any) => t.type !== "GUARANTOR_FIRST_NOTICE" && t.type !== "GUARANTOR_ESCALATION"));
-        if (data.templates && data.templates.length > 0) {
+        const filtered = (data.templates || []).filter((t: any) => t.type !== "GUARANTOR_FIRST_NOTICE" && t.type !== "GUARANTOR_ESCALATION");
+        setTemplates(filtered);
+        if (filtered.length > 0) {
           // pick default based on filter
-          setSelectedTemplateId(data.templates[0].id);
+          setSelectedTemplateId(filtered[0].id);
         }
       })
       .catch(() => {});
