@@ -7,7 +7,7 @@ async function main() {
 
   // 1. Get the "Default Company" tenant
   const defaultTenant = await prisma.tenant.findUnique({
-    where: { slug: "default-company" },
+    where: { id: "default" },
   });
 
   if (!defaultTenant) {
