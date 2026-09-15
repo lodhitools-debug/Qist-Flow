@@ -15,43 +15,68 @@ export default function SaaSPlansPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   const [name, setName] = useState("");
   const [monthlyPrice, setMonthlyPrice] = useState("");
-  const [trialDays, setTrialDays] = useState("");
+  const [trialDays, setTrialDays] = useState("0");
   const [maxUsers, setMaxUsers] = useState("10");
   const [maxBranches, setMaxBranches] = useState("1");
   const [maxWaAccounts, setMaxWaAccounts] = useState("1");
   const [maxMonthlyMessages, setMaxMonthlyMessages] = useState("5000");
   const [isRecommended, setIsRecommended] = useState(false);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const openCreateModal = () => {
+    setEditingId(null);
+    setName("");
+    setMonthlyPrice("");
+    setTrialDays("0");
+    setMaxUsers("10");
+    setMaxBranches("1");
+    setMaxWaAccounts("1");
+    setMaxMonthlyMessages("5000");
+    setIsRecommended(false);
+    setFormError(null);
+    setShowModal(true);
+  };
+
+  const openEditModal = (plan: any) => {
+    setEditingId(plan.id);
+    setName(plan.name);
+    setMonthlyPrice(plan.monthlyPrice.toString());
+    setTrialDays(plan.trialDays.toString());
+    setMaxUsers(plan.maxUsers.toString());
+    setMaxBranches(plan.maxBranches.toString());
+    setMaxWaAccounts(plan.maxWaAccounts.toString());
+    setMaxMonthlyMessages(plan.maxMonthlyMessages.toString());
+    setIsRecommended(plan.isRecommended);
+    setFormError(null);
+    setShowModal(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setFormError(null);
+    
+    const payload = {
+      name, monthlyPrice, trialDays, maxUsers, maxBranches, maxWaAccounts, maxMonthlyMessages, isRecommended
+    };
+
     try {
-      const res = await fetch("/api/saas/plans", {
-        method: "POST",
+      const url = editingId ? `/api/saas/plans/${editingId}` : "/api/saas/plans";
+      const method = editingId ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          monthlyPrice,
-          trialDays,
-          maxUsers,
-          maxBranches,
-          maxWaAccounts,
-          maxMonthlyMessages,
-          isRecommended
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to create plan");
+      if (!res.ok) throw new Error(data.error || "Failed to save plan");
       
       mutate();
       setShowModal(false);
-      setName("");
-      setMonthlyPrice("");
-      setTrialDays("");
-      setIsRecommended(false);
     } catch (err: any) {
       setFormError(err.message);
     } finally {
@@ -71,7 +96,7 @@ export default function SaaSPlansPage() {
             Configure subscription tiers, feature flags, and usage limits.
           </p>
         </div>
-        <button onClick={() => setShowModal(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-indigo-500/20 transition-all">
+        <button onClick={openCreateModal} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-indigo-500/20 transition-all">
           <Plus className="w-4 h-4" />
           <span>Create New Plan</span>
         </button>
@@ -109,8 +134,7 @@ export default function SaaSPlansPage() {
                   {plan.trialDays > 0 ? "TRIAL" : "RECURRING"}
                 </span>
                 <div className="flex gap-1.5">
-                  <button className="p-1.5 text-slate-400 hover:text-indigo-500 bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-500/10 rounded-lg"><Edit className="w-4 h-4" /></button>
-                  <button className="p-1.5 text-slate-400 hover:text-blue-500 bg-slate-50 hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-blue-500/10 rounded-lg"><Copy className="w-4 h-4" /></button>
+                  <button onClick={() => openEditModal(plan)} className="p-1.5 text-slate-400 hover:text-indigo-500 bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-500/10 rounded-lg"><Edit className="w-4 h-4" /></button>
                 </div>
               </div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">{plan.name}</h3>
@@ -134,15 +158,15 @@ export default function SaaSPlansPage() {
         </div>
       )}
 
-      {/* Create Plan Modal */}
+      {/* Create / Edit Plan Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-lg border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in-95">
             <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Create New Plan</h2>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">{editingId ? 'Edit Plan' : 'Create New Plan'}</h2>
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
-            <form onSubmit={handleCreate} className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+            <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
               {formError && (
                 <div className="p-3 bg-rose-50 text-rose-600 text-xs rounded-lg border border-rose-200">{formError}</div>
               )}
@@ -186,7 +210,7 @@ export default function SaaSPlansPage() {
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
                 <button disabled={submitting} type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg flex items-center gap-2">
                   {submitting && <RefreshCw className="w-4 h-4 animate-spin" />}
-                  Create Plan
+                  {editingId ? 'Save Changes' : 'Create Plan'}
                 </button>
               </div>
             </form>

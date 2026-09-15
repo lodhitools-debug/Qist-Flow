@@ -1,61 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSuperAdmin } from "@/lib/auth";
+import { logActivity } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const { errorResponse } = await requireSuperAdmin(req);
+  const { errorResponse, session } = await requireSuperAdmin(req);
   if (errorResponse) return errorResponse;
 
   try {
-    const { id } = params;
     const body = await req.json();
-    const { name, price, maxUsers, maxCustomers, features, isPublic } = body;
+    const { name, monthlyPrice, maxUsers, maxBranches, maxWaAccounts, maxMonthlyMessages, trialDays, isRecommended, status } = body;
 
-    const plan = await prisma.subscriptionPlan.update({
-      where: { id },
+    const plan = await prisma.planVersion.update({
+      where: { id: params.id },
       data: {
-        ...(name && { name }),
-        ...(price !== undefined && { price: Number(price) }),
-        ...(maxUsers !== undefined && { maxUsers: Number(maxUsers) }),
-        ...(maxCustomers !== undefined && { maxCustomers: Number(maxCustomers) }),
-        ...(features !== undefined && { features }),
-        ...(isPublic !== undefined && { isPublic }),
-      },
+        name,
+        monthlyPrice: monthlyPrice ? parseFloat(monthlyPrice) : undefined,
+        maxUsers: maxUsers !== undefined ? parseInt(maxUsers) : undefined,
+        maxBranches: maxBranches !== undefined ? parseInt(maxBranches) : undefined,
+        maxWaAccounts: maxWaAccounts !== undefined ? parseInt(maxWaAccounts) : undefined,
+        maxMonthlyMessages: maxMonthlyMessages !== undefined ? parseInt(maxMonthlyMessages) : undefined,
+        trialDays: trialDays !== undefined ? parseInt(trialDays) : undefined,
+        isRecommended: isRecommended !== undefined ? isRecommended : undefined,
+        status
+      }
+    });
+
+    await logActivity({
+      userId: session?.userId,
+      action: "PLAN_UPDATED",
+      entityType: "PlanVersion",
+      entityId: plan.id,
+      details: JSON.stringify({ action: "UPDATE", name: plan.name })
     });
 
     return NextResponse.json({ success: true, plan });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
-  }
-}
-
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const { errorResponse } = await requireSuperAdmin(req);
-  if (errorResponse) return errorResponse;
-
-  try {
-    const { id } = params;
-
-    // Check if any tenants are using this plan before deleting
-    const tenantsWithPlan = await prisma.tenant.count({
-      where: { customPlanId: id }
-    });
-
-    if (tenantsWithPlan > 0) {
-      return NextResponse.json(
-        { success: false, error: `Cannot delete plan. It is currently assigned to ${tenantsWithPlan} branch(es).` }, 
-        { status: 400 }
-      );
-    }
-
-    await prisma.subscriptionPlan.delete({
-      where: { id },
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
