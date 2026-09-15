@@ -84,6 +84,19 @@ export async function GET(req: NextRequest) {
       const randomPassword = crypto.randomBytes(32).toString("hex");
       const passwordHash = await hashPassword(randomPassword);
 
+      // Ensure 'default' tenant exists for Super Admin
+      const defaultTenant = await prisma.tenant.findUnique({ where: { id: "default" } });
+      if (!defaultTenant) {
+        await prisma.tenant.create({
+          data: {
+            id: "default",
+            name: "System Administration",
+            slug: "system-admin",
+            isActive: true,
+          }
+        });
+      }
+
       user = await prisma.user.create({
         data: {
           name,
@@ -93,6 +106,7 @@ export async function GET(req: NextRequest) {
           branch: "MAIN",
           isActive: true,
           mustChangePassword: false,
+          tenantId: "default",
         },
       });
 
