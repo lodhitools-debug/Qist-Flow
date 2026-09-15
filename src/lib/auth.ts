@@ -68,7 +68,30 @@ export async function getSessionUser(req?: NextRequest): Promise<TokenPayload | 
   }
 
   if (!token) return null;
-  return verifyToken(token);
+  
+  const decoded = await verifyToken(token);
+  if (!decoded) return null;
+
+  // Check tenant status to instantly invalidate sessions for deleted/deactivated tenants across all routes
+  if (decoded.role !== "SUPER_ADMIN" && decoded.tenantId) {
+    try {
+      const { prisma } = await import("@/lib/prisma");
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: decoded.tenantId },
+        select: { isDeleted: true, isActive: true }
+      });
+
+      if (!tenant || tenant.isDeleted || !tenant.isActive) {
+        return null; // Session invalid if tenant is disabled or deleted
+      }
+    } catch (err) {
+      console.error("Failed to validate tenant status in getSessionUser", err);
+      // In case of DB connection error, we might want to return null to be safe, but it could cause false logouts.
+      // Assuming DB is available for now.
+    }
+  }
+
+  return decoded;
 }
 
 export function hasRole(userRole: string, allowedRoles: string[]): boolean {
