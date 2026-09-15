@@ -71,14 +71,15 @@ export async function GET(req: NextRequest) {
       where: { email },
     });
 
-    const totalUsersCount = await prisma.user.count();
-    const isFirstUser = totalUsersCount === 0;
+    const TARGET_ADMIN_EMAIL = "lodhitools@gmail.com";
+    if (email !== TARGET_ADMIN_EMAIL) {
+      console.warn(`[Google Auth] Unauthorized email attempt: ${email}`);
+      return NextResponse.redirect(`${appOrigin}/saas/login?error=unauthorized_email`);
+    }
+
+    const shouldBeAdmin = true;
 
     if (!user) {
-      // If no admin exists in database, or if email matches ADMIN_EMAIL, designate as ADMIN
-      const configuredAdminEmail = process.env.ADMIN_EMAIL?.toLowerCase().trim();
-      const shouldBeAdmin = isFirstUser || (configuredAdminEmail && configuredAdminEmail === email);
-
       // Generate a random high-entropy password hash since user logs in via Google
       const randomPassword = crypto.randomBytes(32).toString("hex");
       const passwordHash = await hashPassword(randomPassword);
@@ -88,7 +89,7 @@ export async function GET(req: NextRequest) {
           name,
           email,
           passwordHash,
-          role: shouldBeAdmin ? "ADMIN" : "RECOVERY_OFFICER",
+          role: shouldBeAdmin ? "SUPER_ADMIN" : "RECOVERY_OFFICER",
           branch: "MAIN",
           isActive: true,
           mustChangePassword: false,
@@ -98,9 +99,17 @@ export async function GET(req: NextRequest) {
       await logActivity({
         userId: user.id,
         action: "GOOGLE_USER_CREATED",
-        details: { email, role: user.role, isFirstUser },
+        details: { email, role: user.role, isFirstUser: false },
         ipAddress: req.headers.get("x-forwarded-for") || undefined,
       });
+    } else {
+      // If user already exists but they should be a SUPER_ADMIN, upgrade them automatically
+      if (shouldBeAdmin && user.role !== "SUPER_ADMIN") {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { role: "SUPER_ADMIN" },
+        });
+      }
     }
 
     if (!user.isActive) {

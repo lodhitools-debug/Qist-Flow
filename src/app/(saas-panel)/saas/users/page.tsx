@@ -178,7 +178,18 @@ export default function SaaSUsersPage() {
                             <button className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors">
                               <Edit className="w-4 h-4" />
                             </button>
-                            <button className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors">
+                            <button onClick={async () => {
+                              if (confirm(`Are you sure you want to delete ${user.name || user.email}?`)) {
+                                try {
+                                  const res = await fetch(`/api/saas/users/${user.id}`, { method: 'DELETE' });
+                                  const result = await res.json();
+                                  if (!res.ok) throw new Error(result.error || 'Failed to delete');
+                                  mutate(); // refresh the list
+                                } catch (err: any) {
+                                  alert(err.message);
+                                }
+                              }
+                            }} className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors">
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>

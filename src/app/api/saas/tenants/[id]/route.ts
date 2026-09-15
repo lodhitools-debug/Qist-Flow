@@ -96,8 +96,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   await prisma.tenant.update({
     where: { id: params.id },
-    data: { isActive: false },
+    data: { isDeleted: true, deletedAt: new Date(), isActive: false },
   });
 
-  return NextResponse.json({ success: true, message: "Tenant deactivated." });
+  return NextResponse.json({ success: true, message: "Tenant permanently deleted." });
 }
