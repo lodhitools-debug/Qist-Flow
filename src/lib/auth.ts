@@ -13,7 +13,7 @@ export interface TokenPayload {
   tenantId: string;   // Multi-tenant: which company this user belongs to
   name: string;
   email: string;
-  role: "ADMIN" | "MANAGER" | "RECOVERY_OFFICER";
+  role: "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "RECOVERY_OFFICER";
   branch?: string | null;
   managerId?: string | null;
   mustChangePassword?: boolean;
