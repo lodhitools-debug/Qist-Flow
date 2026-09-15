@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const plan = searchParams.get("plan") || "";
   const status = searchParams.get("status") || "";
 
-  const where: Record<string, unknown> = { isDeleted: false };
+  const where: Record<string, unknown> = {};
   if (search) {
     where.OR = [
       { name: { contains: search, mode: "insensitive" } },
