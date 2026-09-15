@@ -6,7 +6,7 @@ import { logActivity } from "@/lib/audit";
 export const dynamic = "force-dynamic";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const { errorResponse, session } = await requireSuperAdmin(req);
+  const { errorResponse, user } = await requireSuperAdmin(req);
   if (errorResponse) return errorResponse;
 
   try {
@@ -29,7 +29,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     });
 
     await logActivity({
-      userId: session?.userId,
+      userId: user?.userId,
       action: "PLAN_UPDATED",
       entityType: "PlanVersion",
       entityId: plan.id,
