@@ -104,6 +104,25 @@ export async function requireAuth(
     };
   }
 
+  // Check tenant status from DB for non-super-admins to ensure they are immediately blocked if the tenant is deleted
+  if (user.role !== "SUPER_ADMIN" && user.tenantId) {
+    const { prisma } = await import("@/lib/prisma");
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: user.tenantId },
+      select: { isDeleted: true, isActive: true }
+    });
+
+    if (!tenant || tenant.isDeleted || !tenant.isActive) {
+      return {
+        user: null,
+        errorResponse: NextResponse.json(
+          { success: false, error: "Your company account has been deactivated or deleted. Please contact support." },
+          { status: 403 }
+        ),
+      };
+    }
+  }
+
   return { user, errorResponse: null };
 }
 

@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { email: cleanEmail },
+      include: { tenant: true }, // Include tenant to check if it's active
     });
 
     if (!user) {
@@ -46,6 +47,22 @@ export async function POST(req: NextRequest) {
         { success: false, error: "Account has been deactivated. Please contact your administrator." },
         { status: 401 }
       );
+    }
+
+    // Check if the tenant is active and not deleted (unless user is SUPER_ADMIN which might not have a tenant or has a special one)
+    if (user.role !== "SUPER_ADMIN" && user.tenant) {
+      if (user.tenant.isDeleted || !user.tenant.isActive) {
+        await logActivity({
+          userId: user.id,
+          action: "LOGIN_FAILED_TENANT_INACTIVE",
+          details: { email: user.email, reason: "Tenant deleted or inactive" },
+          ipAddress: req.headers.get("x-forwarded-for") || undefined,
+        });
+        return NextResponse.json(
+          { success: false, error: "Your company account has been deactivated or deleted. Please contact support." },
+          { status: 401 }
+        );
+      }
     }
 
     const isMatch = await comparePassword(password, user.passwordHash);
