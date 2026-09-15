@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSuperAdmin } from "@/lib/auth";
 
@@ -11,7 +11,7 @@ export async function GET() {
   } 
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const { errorResponse } = await requireSuperAdmin(req);
   if (errorResponse) return errorResponse;
 
