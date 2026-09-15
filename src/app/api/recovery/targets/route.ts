@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
         customerName: cust.customerName,
         primaryPhone: cust.primaryPhone,
         guarantor1Name: cust.guarantor1Name,
-        guarantor1Phone: cust.guarantor1Phone,
+        guarantor1Phone: cust.guarantor1Phone && cust.guarantor1Phone !== cust.primaryPhone ? cust.guarantor1Phone : null,
         branch: cust.branch,
         emi: inst.emi,
         balance: inst.balance,

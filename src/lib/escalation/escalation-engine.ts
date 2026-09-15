@@ -54,13 +54,14 @@ export function resolveGuarantorContact(customer: {
   guarantor1Phone?: string | null;
   guarantor2Name?: string | null;
   guarantor2Phone?: string | null;
+  primaryPhone?: string | null;
 }): {
   guarantorType: "GUARANTOR_1" | "GUARANTOR_2" | null;
   name: string;
   phone: string;
 } | null {
   // 1. Try Guarantor 1
-  if (customer.guarantor1Phone) {
+  if (customer.guarantor1Phone && customer.guarantor1Phone !== customer.primaryPhone) {
     const formatted = formatPhoneNumber(customer.guarantor1Phone);
     if (formatted.isValid) {
       return {
@@ -72,7 +73,7 @@ export function resolveGuarantorContact(customer: {
   }
 
   // 2. Failover to Guarantor 2 if Guarantor 1 is invalid or missing
-  if (customer.guarantor2Phone) {
+  if (customer.guarantor2Phone && customer.guarantor2Phone !== customer.primaryPhone) {
     const formatted = formatPhoneNumber(customer.guarantor2Phone);
     if (formatted.isValid) {
       return {

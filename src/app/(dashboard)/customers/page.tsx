@@ -386,8 +386,8 @@ Ghulam Ahmad Razzaqi`
       
       const phone = recipientType === "GUARANTOR" ? selectedCust.guarantor1Phone : selectedCust.primaryPhone;
       
-      if (!phone) {
-        setSendResult("Error: No phone number available for the selected recipient type.");
+      if (!phone || (recipientType === "GUARANTOR" && phone === selectedCust.primaryPhone)) {
+        setSendResult("Error: Guarantor phone number is missing or identical to customer phone.");
         setSendingMessage(false);
         return;
       }

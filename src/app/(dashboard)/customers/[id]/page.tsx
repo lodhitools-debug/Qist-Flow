@@ -336,8 +336,8 @@ Qistbazar Recovery`;
     const phone = selectedGuarantor === "GUARANTOR_1" ? customer.guarantor1Phone : customer.guarantor2Phone;
     const name = selectedGuarantor === "GUARANTOR_1" ? customer.guarantor1Name : customer.guarantor2Name;
 
-    if (!phone) {
-      setGuarantorMsgNotice("Error: Guarantor phone number is missing");
+    if (!phone || phone === customer.primaryPhone) {
+      setGuarantorMsgNotice("Error: Guarantor phone number is missing or identical to customer phone.");
       return;
     }
 
