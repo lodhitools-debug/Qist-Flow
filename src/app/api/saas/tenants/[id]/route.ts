@@ -89,15 +89,39 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json({ success: true, tenant: updated });
 }
 
-// DELETE /api/saas/tenants/[id] — deactivate (soft delete)
+// DELETE /api/saas/tenants/[id] — hard delete tenant and all its data
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const { errorResponse } = await requireSuperAdmin(req);
   if (errorResponse) return errorResponse;
 
-  await prisma.tenant.update({
-    where: { id: params.id },
-    data: { isDeleted: true, deletedAt: new Date(), isActive: false },
-  });
+  const tenantId = params.id;
 
-  return NextResponse.json({ success: true, message: "Tenant permanently deleted." });
+  // We must delete all related data manually because relations have onDelete: Restrict
+  await prisma.$transaction([
+    prisma.messageLog.deleteMany({ where: { tenantId } }),
+    prisma.messageQueue.deleteMany({ where: { tenantId } }),
+    prisma.whatsAppSession.deleteMany({ where: { tenantId } }),
+    prisma.activityLog.deleteMany({ where: { tenantId } }),
+    prisma.customerAssignment.deleteMany({ where: { customer: { tenantId } } }),
+    prisma.payment.deleteMany({ where: { customer: { tenantId } } }),
+    prisma.installment.deleteMany({ where: { customer: { tenantId } } }),
+    prisma.customer.deleteMany({ where: { tenantId } }),
+    prisma.excelImportRow.deleteMany({ where: { excelImport: { tenantId } } }),
+    prisma.excelImport.deleteMany({ where: { tenantId } }),
+    prisma.backupSnapshot.deleteMany({ where: { tenantId } }),
+    prisma.reminderRule.deleteMany({ where: { tenantId } }),
+    prisma.messageTemplate.deleteMany({ where: { tenantId } }),
+    prisma.systemSetting.deleteMany({ where: { tenantId } }),
+    prisma.passwordResetToken.deleteMany({ where: { user: { tenantId } } }),
+    prisma.user.deleteMany({ where: { tenantId } }),
+    prisma.invoice.deleteMany({ where: { tenantId } }),
+    prisma.subscription.deleteMany({ where: { tenantId } }),
+    prisma.supportTicket.deleteMany({ where: { tenantId } }),
+    prisma.whatsAppAccountStatus.deleteMany({ where: { tenantId } }),
+    prisma.usageMetric.deleteMany({ where: { tenantId } }),
+    prisma.saaSAuditLog.deleteMany({ where: { tenantId } }),
+    prisma.tenant.delete({ where: { id: tenantId } })
+  ]);
+
+  return NextResponse.json({ success: true, message: "Tenant and all its data permanently deleted." });
 }
