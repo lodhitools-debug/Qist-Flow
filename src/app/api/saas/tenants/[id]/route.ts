@@ -96,6 +96,10 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   const tenantId = params.id;
 
+  if (tenantId === "default") {
+    return NextResponse.json({ success: false, error: "Cannot delete the core system tenant." }, { status: 403 });
+  }
+
   // We must delete all related data manually because relations have onDelete: Restrict
   await prisma.$transaction([
     prisma.messageLog.deleteMany({ where: { tenantId } }),

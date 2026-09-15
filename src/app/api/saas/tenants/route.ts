@@ -14,7 +14,9 @@ export async function GET(req: NextRequest) {
   const plan = searchParams.get("plan") || "";
   const status = searchParams.get("status") || "";
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = {
+    id: { not: "default" }, // Hide the system anchor tenant from the SaaS panel
+  };
   if (search) {
     where.OR = [
       { name: { contains: search, mode: "insensitive" } },
