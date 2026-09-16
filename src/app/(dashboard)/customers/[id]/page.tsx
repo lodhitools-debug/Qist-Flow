@@ -243,7 +243,7 @@ export default function CustomerDetailPage() {
 Assalam-o-Alaikum ${gName},
 
 ${customer.customerName} ke account number ${customer.account} ki qist ta-hala Unpaid/Overdue hai.
-Product: ${customer.productName || "Product"}
+Product: ${customer.productName || ""}
 
 Aap is account ke mohtaram Guarantor (Zamin) hain. Hum customer se rabta karne ki koshish kar rahe hain. Barah-e-karam fori tor par customer se rabta kar ke baqaya qist ki adaigi aur aainda ke Payment Schedule ki tasdeeq karwayein.
 
@@ -256,14 +256,14 @@ Mazeed bar-aan, wajebat ki musalsal adam adaigi ki surat mein idaray ki policy a
 Lehaza kisi bhi mazeed takheer se bachne ke liye barah-e-karam fori tor par mutaliqa customer se rabta kar ke baqaya qist ki adaigi yaqini banwayein.
 
 Qistbazar Recovery Officer:
-Ghulam Ahmed Razaqi
+Ghulam Ahmad Razzaqi
 -------------------------
 یاد دہانی پیغام — Guarantor
 
 السلام علیکم ${gName}،
 
 ${customer.customerName} کے اکاؤنٹ نمبر ${customer.account} کی قسط تاحال Unpaid/Overdue ہے۔
-پروڈکٹ: ${customer.productName || "Product"}
+پروڈکٹ: ${customer.productName || ""}
 
 آپ اس اکاؤنٹ کے معزز Guarantor (ضامن) ہیں۔ ہم کسٹمر سے رابطہ کرنے کی کوشش کر رہے ہیں۔ براہِ کرم فوری طور پر کسٹمر سے رابطہ کر کے بقایا قسط کی ادائیگی اور آئندہ کے Payment Schedule کی تصدیق کروائیں۔
 
@@ -276,7 +276,7 @@ ${customer.customerName} کے اکاؤنٹ نمبر ${customer.account} کی ق�
 لہٰذا کسی بھی مزید تاخیر سے بچنے کے لیے براہِ کرم فوری طور پر متعلقہ کسٹمر سے رابطہ کر کے بقایا قسط کی ادائیگی یقینی بنوائیں۔
 
 Qistbazar Recovery Officer:
-Ghulam Ahmed Razaqi`;
+Ghulam Ahmad Razzaqi`;
 
 
     setGuarantorCustomMsg(defaultFirstNotice);
@@ -297,7 +297,7 @@ Ghulam Ahmed Razaqi`;
 Assalam-o-Alaikum ${gName},
 
 ${customer.customerName} ke account number ${customer.account} ki qist ta-hala Unpaid/Overdue hai.
-Product: ${customer.productName || "Product"}
+Product: ${customer.productName || ""}
 
 Aap is account ke mohtaram Guarantor (Zamin) hain. Hum customer se rabta karne ki koshish kar rahe hain. Barah-e-karam fori tor par customer se rabta kar ke baqaya qist ki adaigi aur aainda ke Payment Schedule ki tasdeeq karwayein.
 
@@ -310,14 +310,14 @@ Mazeed bar-aan, wajebat ki musalsal adam adaigi ki surat mein idaray ki policy a
 Lehaza kisi bhi mazeed takheer se bachne ke liye barah-e-karam fori tor par mutaliqa customer se rabta kar ke baqaya qist ki adaigi yaqini banwayein.
 
 Qistbazar Recovery Officer:
-Ghulam Ahmed Razaqi
+Ghulam Ahmad Razzaqi
 -------------------------
 یاد دہانی پیغام — Guarantor
 
 السلام علیکم ${gName}،
 
 ${customer.customerName} کے اکاؤنٹ نمبر ${customer.account} کی قسط تاحال Unpaid/Overdue ہے۔
-پروڈکٹ: ${customer.productName || "Product"}
+پروڈکٹ: ${customer.productName || ""}
 
 آپ اس اکاؤنٹ کے معزز Guarantor (ضامن) ہیں۔ ہم کسٹمر سے رابطہ کرنے کی کوشش کر رہے ہیں۔ براہِ کرم فوری طور پر کسٹمر سے رابطہ کر کے بقایا قسط کی ادائیگی اور آئندہ کے Payment Schedule کی تصدیق کروائیں۔
 
@@ -330,7 +330,7 @@ ${customer.customerName} کے اکاؤنٹ نمبر ${customer.account} کی ق�
 لہٰذا کسی بھی مزید تاخیر سے بچنے کے لیے براہِ کرم فوری طور پر متعلقہ کسٹمر سے رابطہ کر کے بقایا قسط کی ادائیگی یقینی بنوائیں۔
 
 Qistbazar Recovery Officer:
-Ghulam Ahmed Razaqi`;
+Ghulam Ahmad Razzaqi`;
     } else if (type === "GUARANTOR_FOLLOWUP") {
       text = `FOLLOW-UP NOTICE (GUARANTOR)
 Mohtaram ${gName},
@@ -538,8 +538,8 @@ Qistbazar Recovery`;
                 `URGENT RECOVERY NOTICE
 Mohtaram ${customer.customerName},
 Aap ka Account No. ${customer.account} abhi tak unpaid/overdue hai
-Product: ${customer.productName || "Product"}
-Branch: ${customer.branch || "Branch"}
+Product: ${customer.productName || ""}
+Branch: Qistbazar Landhi
 
 Barah-e-karam apni pending qist foran ada karein aur payment online bhejne ki surat mein confirmation share karein, ya branch visit karke apna account regularize karwain.
 Important: Agar aap ne waqt par qist ada na ki to aap ki eCIB/credit history mutasir ho sakti hai, jis ki wajah se mustaqbil mein financing hasil karne mein mushkil paish aa sakti hai. Mazeed, company policy aur applicable law ke mutabiq legal action bhi liya ja sakta hai.
@@ -553,8 +553,8 @@ Ghulam Ahmad Razzaqi
 
 آپ کا اکاؤنٹ نمبر ${customer.account} ابھی تک غیر ادا شدہ / واجب الادا ہے۔
 
-پروڈکٹ: ${customer.productName || "Product"}
-برانچ: ${customer.branch || "Branch"}
+پروڈکٹ: ${customer.productName || ""}
+برانچ: Qistbazar Landhi
 
 براہِ کرم اپنی بقایا قسط فوری طور پر ادا کریں اور آن لائن ادائیگی کی صورت میں ادائیگی کی تصدیق فراہم کریں، یا برانچ وزٹ کرکے اپنا اکاؤنٹ ریگولرائز کروائیں۔
 

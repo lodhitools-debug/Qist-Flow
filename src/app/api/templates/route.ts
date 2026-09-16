@@ -4,6 +4,8 @@ import { getSessionUser } from "@/lib/auth";
 import { logActivity } from "@/lib/audit";
 import { renderTemplate, TEMPLATE_VARIABLES } from "@/lib/template-renderer";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getSessionUser(req);

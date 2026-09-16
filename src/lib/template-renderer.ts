@@ -91,13 +91,13 @@ export const DEFAULT_TEMPLATES = [
 Mohtaram {{customer_name}},
 Aap ka Account No. {{account}} abhi tak unpaid/overdue hai
 Product: {{product_name}}
-Branch: {{branch}}
+Branch: Qistbazar Landhi
 
 Barah-e-karam apni pending qist foran ada karein aur payment online bhejne ki surat mein confirmation share karein, ya branch visit karke apna account regularize karwain.
 Important: Agar aap ne waqt par qist ada na ki to aap ki eCIB/credit history mutasir ho sakti hai, jis ki wajah se mustaqbil mein financing hasil karne mein mushkil paish aa sakti hai. Mazeed, company policy aur applicable law ke mutabiq legal action bhi liya ja sakta hai.
 
 Qistbazar Recovery Officer
-{{recovery_person}}
+Ghulam Ahmad Razzaqi
 -------------------------
 فوری ریکوری نوٹس
 
@@ -106,14 +106,14 @@ Qistbazar Recovery Officer
 آپ کا اکاؤنٹ نمبر {{account}} ابھی تک غیر ادا شدہ / واجب الادا ہے۔
 
 پروڈکٹ: {{product_name}}
-برانچ: {{branch}}
+برانچ: Qistbazar Landhi
 
 براہِ کرم اپنی بقایا قسط فوری طور پر ادا کریں اور آن لائن ادائیگی کی صورت میں ادائیگی کی تصدیق فراہم کریں، یا برانچ وزٹ کرکے اپنا اکاؤنٹ ریگولرائز کروائیں۔
 
 اہم اطلاع: اگر آپ نے مقررہ وقت پر قسط ادا نہ کی تو آپ کی eCIB/کریڈٹ ہسٹری متاثر ہو سکتی ہے، جس کی وجہ سے مستقبل میں فنانسنگ حاصل کرنے میں مشکلات پیش آ سکتی ہیں۔ مزید برآں، کمپنی پالیسی اور قابلِ اطلاق قانون کے مطابق قانونی کارروائی بھی کی جا سکتی ہے۔
 
 Qistbazar Recovery Officer
-{{recovery_person}}`,
+Ghulam Ahmad Razzaqi`,
   },
   {
     slug: "guarantor-urgent-notice",
@@ -138,8 +138,8 @@ Mazeed bar-aan, wajebat ki musalsal adam adaigi ki surat mein idaray ki policy a
 Lehaza kisi bhi mazeed takheer se bachne ke liye barah-e-karam fori tor par mutaliqa customer se rabta kar ke baqaya qist ki adaigi yaqini banwayein.
 
 Qistbazar Recovery Officer:
-{{recovery_person}}
-
+Ghulam Ahmad Razzaqi
+-------------------------
 یاد دہانی پیغام — Guarantor
 
 السلام علیکم {{guarantor_name}}،
@@ -158,6 +158,6 @@ Qistbazar Recovery Officer:
 لہٰذا کسی بھی مزید تاخیر سے بچنے کے لیے براہِ کرم فوری طور پر متعلقہ کسٹمر سے رابطہ کر کے بقایا قسط کی ادائیگی یقینی بنوائیں۔
 
 Qistbazar Recovery Officer:
-{{recovery_person}}`,
+Ghulam Ahmad Razzaqi`,
   }
 ];
