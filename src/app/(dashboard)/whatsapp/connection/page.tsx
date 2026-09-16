@@ -33,7 +33,7 @@ type WAStatus =
 
 // How often to poll the status API (ms)
 const POLL_INTERVAL_CONNECTED = 30_000;
-const POLL_INTERVAL_QR        = 3_000;
+const POLL_INTERVAL_QR        = 1_500;
 const POLL_INTERVAL_DEFAULT   = 5_000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

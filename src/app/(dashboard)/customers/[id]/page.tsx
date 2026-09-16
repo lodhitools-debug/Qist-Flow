@@ -26,6 +26,7 @@ import {
   Users,
   ShieldAlert,
   HelpCircle,
+  Copy,
 } from "lucide-react";
 import clsx from "clsx";
 import { getStatusBadgeConfig } from "@/lib/installment-engine";
@@ -237,31 +238,46 @@ export default function CustomerDetailPage() {
     const inst = customer.installments?.[0];
     const dueStr = inst?.dueDate ? new Date(inst.dueDate).toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" }) : "N/A";
 
-    const defaultFirstNotice = `URGENT RECOVERY NOTICE (GUARANTOR)
-Mohtaram ${gName},
-Yeh paigham aap ko bataur Zamanat-daar (Guarantor) bhaija ja raha hai.
-Customer: ${customer.customerName}
-Account: ${customer.account}
-Pending Amount: Rs. ${inst?.balance || 0}
-Branch: ${customer.branch || "Branch"}
+    const defaultFirstNotice = `Yaad-dihani Paigham — Guarantor
 
-Barah-e-karam customer se rabta kar ke unhein un ki pending qist ada karne ki yad-dihani karwayein. Agar customer adaigi nahi karta, to bataur zamin yeh raqam ada karna aap ki zimadari hogi.
+Assalam-o-Alaikum ${gName},
 
-Qistbazar Recovery Officer
-Ghulam Ahmad Razzaqi
+${customer.customerName} ke account number ${customer.account} ki qist ta-hala Unpaid/Overdue hai.
+Product: ${customer.productName || "Product"}
+
+Aap is account ke mohtaram Guarantor (Zamin) hain. Hum customer se rabta karne ki koshish kar rahe hain. Barah-e-karam fori tor par customer se rabta kar ke baqaya qist ki adaigi aur aainda ke Payment Schedule ki tasdeeq karwayein.
+
+Aham Ittela:
+
+Agar muqarrara waqt par qistain ada na ki gayin aur adaigi mein musalsal takheer hoti rahi to is ke nateejay mein Customer ke sath sath Guarantor ki ECIB/Credit History bhi mutasir ho sakti hai, jis se mustaqbil mein maali sahuliyat/financing hasil karne mein mushkilat paish aa sakti hain.
+
+Mazeed bar-aan, wajebat ki musalsal adam adaigi ki surat mein idaray ki policy aur qabil-e-ittelaq qawaneen ke mutabiq Customer aur Guarantor ke khilaf qanooni karwai bhi amal mein lai ja sakti hai.
+
+Lehaza kisi bhi mazeed takheer se bachne ke liye barah-e-karam fori tor par mutaliqa customer se rabta kar ke baqaya qist ki adaigi yaqini banwayein.
+
+Qistbazar Recovery Officer:
+Ghulam Ahmed Razaqi
 -------------------------
-فوری ریکوری نوٹس برائے ضامن
-محترم ${gName}،
-یہ پیغام آپ کو بطور ضمانت دار (Guarantor) بھیجا جا رہا ہے۔
-کسٹمر: ${customer.customerName}
-اکاؤنٹ: ${customer.account}
-بقایا رقم: Rs. ${inst?.balance || 0}
-برانچ: ${customer.branch || "Branch"}
+یاد دہانی پیغام — Guarantor
 
-براہِ کرم کسٹمر سے رابطہ کر کے انہیں ان کی بقایا قسط ادا کرنے کی یاد دہانی کروائیں۔ اگر کسٹمر ادائیگی نہیں کرتا، تو بطور ضامن یہ رقم ادا کرنا آپ کی ذمہ داری ہوگی۔
+السلام علیکم ${gName}،
 
-Qistbazar Recovery Officer
-Ghulam Ahmad Razzaqi`;
+${customer.customerName} کے اکاؤنٹ نمبر ${customer.account} کی قسط تاحال Unpaid/Overdue ہے۔
+پروڈکٹ: ${customer.productName || "Product"}
+
+آپ اس اکاؤنٹ کے معزز Guarantor (ضامن) ہیں۔ ہم کسٹمر سے رابطہ کرنے کی کوشش کر رہے ہیں۔ براہِ کرم فوری طور پر کسٹمر سے رابطہ کر کے بقایا قسط کی ادائیگی اور آئندہ کے Payment Schedule کی تصدیق کروائیں۔
+
+اہم اطلاع:
+
+اگر مقررہ وقت پر اقساط ادا نہ کی گئیں اور ادائیگی میں مسلسل تاخیر ہوتی رہی تو اس کے نتیجے میں Customer کے ساتھ ساتھ Guarantor کی ECIB/Credit History بھی متاثر ہو سکتی ہے، جس سے مستقبل میں مالی سہولیات/فنانسنگ کے حصول میں مشکلات پیش آ سکتی ہیں۔
+
+مزید برآں، واجبات کی مسلسل عدم ادائیگی کی صورت میں ادارے کی پالیسی اور قابلِ اطلاق قوانین کے مطابق Customer اور Guarantor کے خلاف قانونی کارروائی بھی عمل میں لائی جا سکتی ہے۔
+
+لہٰذا کسی بھی مزید تاخیر سے بچنے کے لیے براہِ کرم فوری طور پر متعلقہ کسٹمر سے رابطہ کر کے بقایا قسط کی ادائیگی یقینی بنوائیں۔
+
+Qistbazar Recovery Officer:
+Ghulam Ahmed Razaqi`;
+
 
     setGuarantorCustomMsg(defaultFirstNotice);
     setGuarantorMsgNotice(null);
@@ -276,31 +292,45 @@ Ghulam Ahmad Razzaqi`;
 
     let text = "";
     if (type === "GUARANTOR_FIRST_NOTICE") {
-      text = `URGENT RECOVERY NOTICE (GUARANTOR)
-Mohtaram ${gName},
-Yeh paigham aap ko bataur Zamanat-daar (Guarantor) bhaija ja raha hai.
-Customer: ${customer.customerName}
-Account: ${customer.account}
-Pending Amount: Rs. ${inst?.balance || 0}
-Branch: ${customer.branch || "Branch"}
+      text = `Yaad-dihani Paigham — Guarantor
 
-Barah-e-karam customer se rabta kar ke unhein un ki pending qist ada karne ki yad-dihani karwayein. Agar customer adaigi nahi karta, to bataur zamin yeh raqam ada karna aap ki zimadari hogi.
+Assalam-o-Alaikum ${gName},
 
-Qistbazar Recovery Officer
-Ghulam Ahmad Razzaqi
+${customer.customerName} ke account number ${customer.account} ki qist ta-hala Unpaid/Overdue hai.
+Product: ${customer.productName || "Product"}
+
+Aap is account ke mohtaram Guarantor (Zamin) hain. Hum customer se rabta karne ki koshish kar rahe hain. Barah-e-karam fori tor par customer se rabta kar ke baqaya qist ki adaigi aur aainda ke Payment Schedule ki tasdeeq karwayein.
+
+Aham Ittela:
+
+Agar muqarrara waqt par qistain ada na ki gayin aur adaigi mein musalsal takheer hoti rahi to is ke nateejay mein Customer ke sath sath Guarantor ki ECIB/Credit History bhi mutasir ho sakti hai, jis se mustaqbil mein maali sahuliyat/financing hasil karne mein mushkilat paish aa sakti hain.
+
+Mazeed bar-aan, wajebat ki musalsal adam adaigi ki surat mein idaray ki policy aur qabil-e-ittelaq qawaneen ke mutabiq Customer aur Guarantor ke khilaf qanooni karwai bhi amal mein lai ja sakti hai.
+
+Lehaza kisi bhi mazeed takheer se bachne ke liye barah-e-karam fori tor par mutaliqa customer se rabta kar ke baqaya qist ki adaigi yaqini banwayein.
+
+Qistbazar Recovery Officer:
+Ghulam Ahmed Razaqi
 -------------------------
-فوری ریکوری نوٹس برائے ضامن
-محترم ${gName}،
-یہ پیغام آپ کو بطور ضمانت دار (Guarantor) بھیجا جا رہا ہے۔
-کسٹمر: ${customer.customerName}
-اکاؤنٹ: ${customer.account}
-بقایا رقم: Rs. ${inst?.balance || 0}
-برانچ: ${customer.branch || "Branch"}
+یاد دہانی پیغام — Guarantor
 
-براہِ کرم کسٹمر سے رابطہ کر کے انہیں ان کی بقایا قسط ادا کرنے کی یاد دہانی کروائیں۔ اگر کسٹمر ادائیگی نہیں کرتا، تو بطور ضامن یہ رقم ادا کرنا آپ کی ذمہ داری ہوگی۔
+السلام علیکم ${gName}،
 
-Qistbazar Recovery Officer
-Ghulam Ahmad Razzaqi`;
+${customer.customerName} کے اکاؤنٹ نمبر ${customer.account} کی قسط تاحال Unpaid/Overdue ہے۔
+پروڈکٹ: ${customer.productName || "Product"}
+
+آپ اس اکاؤنٹ کے معزز Guarantor (ضامن) ہیں۔ ہم کسٹمر سے رابطہ کرنے کی کوشش کر رہے ہیں۔ براہِ کرم فوری طور پر کسٹمر سے رابطہ کر کے بقایا قسط کی ادائیگی اور آئندہ کے Payment Schedule کی تصدیق کروائیں۔
+
+اہم اطلاع:
+
+اگر مقررہ وقت پر اقساط ادا نہ کی گئیں اور ادائیگی میں مسلسل تاخیر ہوتی رہی تو اس کے نتیجے میں Customer کے ساتھ ساتھ Guarantor کی ECIB/Credit History بھی متاثر ہو سکتی ہے، جس سے مستقبل میں مالی سہولیات/فنانسنگ کے حصول میں مشکلات پیش آ سکتی ہیں۔
+
+مزید برآں، واجبات کی مسلسل عدم ادائیگی کی صورت میں ادارے کی پالیسی اور قابلِ اطلاق قوانین کے مطابق Customer اور Guarantor کے خلاف قانونی کارروائی بھی عمل میں لائی جا سکتی ہے۔
+
+لہٰذا کسی بھی مزید تاخیر سے بچنے کے لیے براہِ کرم فوری طور پر متعلقہ کسٹمر سے رابطہ کر کے بقایا قسط کی ادائیگی یقینی بنوائیں۔
+
+Qistbazar Recovery Officer:
+Ghulam Ahmed Razaqi`;
     } else if (type === "GUARANTOR_FOLLOWUP") {
       text = `FOLLOW-UP NOTICE (GUARANTOR)
 Mohtaram ${gName},
@@ -507,7 +537,7 @@ Qistbazar Recovery`;
               setCustomMsg(
                 `URGENT RECOVERY NOTICE
 Mohtaram ${customer.customerName},
-Aap ka Account No. ${customer.account} abhi tak unpaid/overdue hai.
+Aap ka Account No. ${customer.account} abhi tak unpaid/overdue hai
 Product: ${customer.productName || "Product"}
 Branch: ${customer.branch || "Branch"}
 
@@ -518,12 +548,16 @@ Qistbazar Recovery Officer
 Ghulam Ahmad Razzaqi
 -------------------------
 فوری ریکوری نوٹس
+
 محترم ${customer.customerName}،
+
 آپ کا اکاؤنٹ نمبر ${customer.account} ابھی تک غیر ادا شدہ / واجب الادا ہے۔
+
 پروڈکٹ: ${customer.productName || "Product"}
 برانچ: ${customer.branch || "Branch"}
 
 براہِ کرم اپنی بقایا قسط فوری طور پر ادا کریں اور آن لائن ادائیگی کی صورت میں ادائیگی کی تصدیق فراہم کریں، یا برانچ وزٹ کرکے اپنا اکاؤنٹ ریگولرائز کروائیں۔
+
 اہم اطلاع: اگر آپ نے مقررہ وقت پر قسط ادا نہ کی تو آپ کی eCIB/کریڈٹ ہسٹری متاثر ہو سکتی ہے، جس کی وجہ سے مستقبل میں فنانسنگ حاصل کرنے میں مشکلات پیش آ سکتی ہیں۔ مزید برآں، کمپنی پالیسی اور قابلِ اطلاق قانون کے مطابق قانونی کارروائی بھی کی جا سکتی ہے۔
 
 Qistbazar Recovery Officer
@@ -1265,9 +1299,20 @@ Ghulam Ahmad Razzaqi`
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Personalized Urdu / Roman-Urdu Message
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Personalized Urdu / Roman-Urdu Message
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(customMsg);
+                  }}
+                  className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-md transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5" /> Copy
+                </button>
+              </div>
               <textarea
                 rows={6}
                 value={customMsg}
@@ -1358,9 +1403,20 @@ Ghulam Ahmad Razzaqi`
               </div>
 
               <div>
-                <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                  Message Text (Privacy Safe: No CNIC / Full Address)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-700 dark:text-slate-300 font-semibold">
+                    Message Text (Privacy Safe: No CNIC / Full Address)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(guarantorCustomMsg);
+                    }}
+                    className="text-[11px] font-semibold text-purple-600 hover:text-purple-700 flex items-center gap-1 bg-purple-50 hover:bg-purple-100 px-2 py-1 rounded-md transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> Copy
+                  </button>
+                </div>
                 <textarea
                   rows={6}
                   value={guarantorCustomMsg}

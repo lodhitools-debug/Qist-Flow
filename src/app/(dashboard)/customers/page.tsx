@@ -351,7 +351,7 @@ export default function CustomersPage() {
     setMessageText(
       `URGENT RECOVERY NOTICE
 Mohtaram ${cust.customerName},
-Aap ka Account No. ${cust.account} abhi tak unpaid/overdue hai.
+Aap ka Account No. ${cust.account} abhi tak unpaid/overdue hai
 Product: ${productName}
 Branch: ${branch}
 
@@ -362,12 +362,16 @@ Qistbazar Recovery Officer
 Ghulam Ahmad Razzaqi
 -------------------------
 فوری ریکوری نوٹس
+
 محترم ${cust.customerName}،
+
 آپ کا اکاؤنٹ نمبر ${cust.account} ابھی تک غیر ادا شدہ / واجب الادا ہے۔
+
 پروڈکٹ: ${productName}
 برانچ: ${branch}
 
 براہِ کرم اپنی بقایا قسط فوری طور پر ادا کریں اور آن لائن ادائیگی کی صورت میں ادائیگی کی تصدیق فراہم کریں، یا برانچ وزٹ کرکے اپنا اکاؤنٹ ریگولرائز کروائیں۔
+
 اہم اطلاع: اگر آپ نے مقررہ وقت پر قسط ادا نہ کی تو آپ کی eCIB/کریڈٹ ہسٹری متاثر ہو سکتی ہے، جس کی وجہ سے مستقبل میں فنانسنگ حاصل کرنے میں مشکلات پیش آ سکتی ہیں۔ مزید برآں، کمپنی پالیسی اور قابلِ اطلاق قانون کے مطابق قانونی کارروائی بھی کی جا سکتی ہے۔
 
 Qistbazar Recovery Officer

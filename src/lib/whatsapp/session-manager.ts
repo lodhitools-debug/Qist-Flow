@@ -252,13 +252,13 @@ export class UserWhatsAppSession {
         printQRInTerminal: false,
         auth: state,
         browser: Browsers.windows("Chrome"),
-        connectTimeoutMs: 60_000,
-        defaultQueryTimeoutMs: 60_000,
-        keepAliveIntervalMs: 15_000,
+        connectTimeoutMs: 15_000,
+        defaultQueryTimeoutMs: 20_000,
+        keepAliveIntervalMs: 30_000,
         retryRequestDelayMs: 2_000,
         maxMsgRetryCount: 3,
         syncFullHistory: false,
-        markOnlineOnConnect: true,
+        markOnlineOnConnect: false,
         generateHighQualityLinkPreview: false,
         getMessage: async () => undefined,
       });
@@ -549,7 +549,13 @@ export class UserWhatsAppSession {
           timestamp: new Date(),
         };
       }
-      const sentMsg = await this.sock.sendMessage(jid, { text: messageText });
+      // Wait for confirmation from WhatsApp server with a 15-second strict timeout
+      const sendPromise = this.sock.sendMessage(jid, { text: messageText });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Send timeout (WhatsApp server unresponsive)")), 15000)
+      );
+      const sentMsg = await Promise.race([sendPromise, timeoutPromise]) as any;
+
       this.lastActiveAt = new Date();
       return { success: true, messageId: sentMsg?.key?.id, timestamp: new Date() };
     } catch (err: any) {
@@ -739,9 +745,9 @@ class WhatsAppSessionManager {
     for (const userId of userDirs) {
       const dbStatus = dbStatusMap.get(userId);
 
-      // Never restore intentionally logged-out sessions
-      if (dbStatus === "LOGGED_OUT") {
-        console.log(`⏭️ [Session Manager] Skipping ${userId} — LOGGED_OUT.`);
+      // Never restore intentionally logged-out or user-disconnected sessions
+      if (dbStatus === "LOGGED_OUT" || dbStatus === "DISCONNECTED") {
+        console.log(`⏭️ [Session Manager] Skipping inactive user: ${userId}`);
         continue;
       }
 

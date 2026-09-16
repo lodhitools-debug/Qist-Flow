@@ -92,11 +92,13 @@ Mohtaram {{customer_name}},
 Aap ka Account No. {{account}} abhi tak unpaid/overdue hai
 Product: {{product_name}}
 Branch: {{branch}}
+
 Barah-e-karam apni pending qist foran ada karein aur payment online bhejne ki surat mein confirmation share karein, ya branch visit karke apna account regularize karwain.
 Important: Agar aap ne waqt par qist ada na ki to aap ki eCIB/credit history mutasir ho sakti hai, jis ki wajah se mustaqbil mein financing hasil karne mein mushkil paish aa sakti hai. Mazeed, company policy aur applicable law ke mutabiq legal action bhi liya ja sakta hai.
+
 Qistbazar Recovery Officer
 {{recovery_person}}
-
+-------------------------
 فوری ریکوری نوٹس
 
 محترم {{customer_name}}،
