@@ -22,6 +22,8 @@ export default function DashboardLayout({
       .then((data) => {
         if (!data || !data.authenticated) {
           window.location.href = "/login";
+        } else if (data.user?.role === "SUPER_ADMIN") {
+          window.location.href = "/saas";
         } else {
           setCheckingAuth(false);
         }
