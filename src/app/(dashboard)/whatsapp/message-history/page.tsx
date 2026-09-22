@@ -32,7 +32,9 @@ async function safeJsonParse(res: Response): Promise<any> {
 export default function MessageHistoryPage() {
   const [view, setView] = useState<"HISTORY" | "QUEUE">("HISTORY");
   const [logs, setLogs] = useState<any[]>([]);
+  const [totalHistory, setTotalHistory] = useState(0);
   const [queueItems, setQueueItems] = useState<any[]>([]);
+  const [totalQueue, setTotalQueue] = useState(0);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -53,6 +55,7 @@ export default function MessageHistoryPage() {
       const data = await safeJsonParse(res);
       if (res.ok && data.logs) {
         setLogs(data.logs);
+        setTotalHistory(data.pagination?.total || data.logs.length);
       }
     } catch (err) {
       console.error("Failed to load message history", err);
@@ -68,6 +71,7 @@ export default function MessageHistoryPage() {
       const data = await safeJsonParse(res);
       if (res.ok && data.items) {
         setQueueItems(data.items);
+        setTotalQueue(data.pagination?.total || data.items.length);
         setStats(data.stats);
       }
     } catch (err) {
@@ -215,7 +219,7 @@ export default function MessageHistoryPage() {
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
             )}
           >
-            Delivery History ({logs.length})
+            Delivery History ({totalHistory})
           </button>
           <button
             onClick={() => setView("QUEUE")}
@@ -226,7 +230,7 @@ export default function MessageHistoryPage() {
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
             )}
           >
-            Active Sending Queue ({queueItems.length})
+            Active Sending Queue ({totalQueue})
           </button>
         </div>
 
