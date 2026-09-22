@@ -157,14 +157,20 @@ export async function enqueueBatch(items: EnqueueMessageParams[]): Promise<{
   let duplicates = 0;
   let errors = 0;
 
-  for (const item of items) {
-    const res = await enqueueMessage(item);
-    if (res.success) {
-      enqueued++;
-    } else if (res.isDuplicate) {
-      duplicates++;
-    } else {
-      errors++;
+  // Process in chunks of 50 to avoid connection pooling issues but still be 50x faster
+  const chunkSize = 50;
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const chunk = items.slice(i, i + chunkSize);
+    const results = await Promise.all(chunk.map((item) => enqueueMessage(item)));
+    
+    for (const res of results) {
+      if (res.success) {
+        enqueued++;
+      } else if (res.isDuplicate) {
+        duplicates++;
+      } else {
+        errors++;
+      }
     }
   }
 
