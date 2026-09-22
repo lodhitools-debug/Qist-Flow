@@ -196,14 +196,14 @@ export class UserWhatsAppSession {
     this.clearTimers();
     this.qrWatchdogTimeout = setTimeout(async () => {
       if (this.connectionState === "CONNECTING" || this.connectionState === "INIT_QR") {
-        console.warn(`⏱️ [User ${this.userId}] QR watchdog triggered — no QR within 30s. Resetting.`);
+        console.warn(`⏱️ [User ${this.userId}] QR watchdog triggered — no QR within 60s. Resetting.`);
         this.destroySocket();
         this.isConnecting = false;
         this.connectionState = "NOT_CONNECTED";
         this.errorMessage = null;
         await this.updateDbSession();
       }
-    }, 30_000);
+    }, 60_000);
   }
 
   // ── Core init / socket creation ───────────────────────────────────────────
@@ -251,10 +251,10 @@ export class UserWhatsAppSession {
         logger,
         printQRInTerminal: false,
         auth: state,
-        browser: Browsers.windows("Chrome"),
-        connectTimeoutMs: 15_000,
-        defaultQueryTimeoutMs: 20_000,
-        keepAliveIntervalMs: 30_000,
+        browser: ["QistFlow", "Chrome", "1.0.0"],
+        connectTimeoutMs: 60_000,
+        defaultQueryTimeoutMs: 60_000,
+        keepAliveIntervalMs: 15_000,
         retryRequestDelayMs: 2_000,
         maxMsgRetryCount: 3,
         syncFullHistory: false,
@@ -303,7 +303,7 @@ export class UserWhatsAppSession {
           // Auto-refresh QR after expiry
           setTimeout(async () => {
             if (this.connectionState === "QR_READY" && !this.isConnected()) {
-              console.log(`🔄 [User ${this.userId}] QR expired — requesting fresh QR...`);
+              console.log(`🔄 [User ${this.userId}] QR expired — user must request fresh QR.`);
               this.destroySocket();
               this.isConnecting = false;
               this.connectionState = "NOT_CONNECTED";
@@ -311,10 +311,6 @@ export class UserWhatsAppSession {
               this.qrCodeString = null;
               this.qrExpiresAt = null;
               await this.updateDbSession();
-              // Re-init to get a fresh QR
-              if (!this.isLoggedOut && !this.userRequestedDisconnect) {
-                setTimeout(() => this.init().catch(() => {}), 500);
-              }
             }
           }, 62_000);
         }
