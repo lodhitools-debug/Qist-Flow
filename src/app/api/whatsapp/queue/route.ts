@@ -53,11 +53,15 @@ export async function POST(req: NextRequest) {
     const { action, queueId } = await req.json();
 
     if (action === "process") {
-      const result = await processQueueWorker(50, true);
+      // Force process all queued messages by resetting their scheduledFor time to now
+      // so the AlwaysData background worker picks them up immediately.
+      const updateResult = await prisma.messageQueue.updateMany({
+        where: { status: "QUEUED", tenantId: session.tenantId },
+        data: { scheduledFor: new Date() },
+      });
       return NextResponse.json({
         success: true,
-        message: `Processed ${result.processed} messages (${result.sent} sent, ${result.failed} failed)`,
-        result,
+        message: `Forced ${updateResult.count} pending messages to process immediately.`,
       });
     }
 
