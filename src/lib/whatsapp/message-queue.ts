@@ -180,7 +180,7 @@ export async function enqueueBatch(items: EnqueueMessageParams[]): Promise<{
 /**
  * Processes a chunk of queued messages with priority sorting, approval checks, and user-isolated WhatsApp dispatch
  */
-export async function processQueueWorker(maxBatchSize: number = 10): Promise<{
+export async function processQueueWorker(maxBatchSize: number = 10, forceProcessAll: boolean = false): Promise<{
   processed: number;
   sent: number;
   failed: number;
@@ -190,7 +190,7 @@ export async function processQueueWorker(maxBatchSize: number = 10): Promise<{
     where: {
       status: "QUEUED",
       approvalStatus: { not: "PENDING_APPROVAL" },
-      scheduledFor: { lte: new Date() },
+      ...(forceProcessAll ? {} : { scheduledFor: { lte: new Date() } }),
     },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
     take: maxBatchSize,
