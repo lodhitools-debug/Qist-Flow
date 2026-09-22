@@ -52,6 +52,10 @@ export async function POST(req: NextRequest) {
     const session = await getSessionUser(req);
     const { action, queueId } = await req.json();
 
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     if (action === "process") {
       // Force process all queued messages by resetting their scheduledFor time to now
       // so the AlwaysData background worker picks them up immediately.
