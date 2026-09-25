@@ -6,8 +6,8 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
   private accessToken: string;
 
   constructor(phoneNumberId?: string, accessToken?: string) {
-    this.phoneNumberId = phoneNumberId || process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID || "";
-    this.accessToken = accessToken || process.env.WHATSAPP_CLOUD_ACCESS_TOKEN || "";
+    this.phoneNumberId = phoneNumberId || process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID || "1328348923692461";
+    this.accessToken = accessToken || process.env.WHATSAPP_CLOUD_ACCESS_TOKEN || "EAAZA8rZAVvxkABSkJZA30xX7Tf2LzUXISuvkWAZCQ6u6RoSnpCwgCGPGcZCZCErREoueVnxFp0OlGwBNpkXdYyaiXOkVLZCHzGEi1M0GYDn8ZBTqTvcDm2DeNzZAwaDKZBKzZAMAnxcYYDQeQsIbOnbkGfeukxvI4lxM3INPcD8lYk4c1Po2WYWpeHjj0TIPrM1nIYZChDlJveqvF9G0AjnbtndIju5WBA6o6ZBBTYhtMptZB0Wi4W1KhLQ12OJkEzgnZBJoz5gZAgT1k0ZC7CLilfKoKFcV78Ot6";
   }
 
   async init(): Promise<void> {

@@ -33,7 +33,10 @@ export async function GET(req: NextRequest) {
       queueStats = { queued, sending, sentToday, failedToday };
     } catch {}
 
-    const hasCloudCreds = !!(process.env.WHATSAPP_CLOUD_ACCESS_TOKEN && process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID);
+    const token = process.env.WHATSAPP_CLOUD_ACCESS_TOKEN || "EAAZA8rZAVvxkABSkJZA30xX7Tf2LzUXISuvkWAZCQ6u6RoSnpCwgCGPGcZCZCErREoueVnxFp0OlGwBNpkXdYyaiXOkVLZCHzGEi1M0GYDn8ZBTqTvcDm2DeNzZAwaDKZBKzZAMAnxcYYDQeQsIbOnbkGfeukxvI4lxM3INPcD8lYk4c1Po2WYWpeHjj0TIPrM1nIYZChDlJveqvF9G0AjnbtndIju5WBA6o6ZBBTYhtMptZB0Wi4W1KhLQ12OJkEzgnZBJoz5gZAgT1k0ZC7CLilfKoKFcV78Ot6";
+    const phoneId = process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID || "1328348923692461";
+    
+    const hasCloudCreds = !!(token && phoneId);
     const isConnected = hasCloudCreds || (dbSession?.status === "CONNECTED" && !!dbSession?.connectedPhone);
     let computedStatus = isConnected ? "CONNECTED" : (dbSession?.status || "NOT_CONNECTED");
 

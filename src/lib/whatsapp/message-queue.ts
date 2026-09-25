@@ -217,7 +217,10 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
     let usedSenderId = null;
 
     const hasTenantCreds = tenant?.waApiToken && tenant?.waPhoneNumberId;
-    const hasGlobalCreds = process.env.WHATSAPP_CLOUD_ACCESS_TOKEN && process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID;
+    
+    const globalToken = process.env.WHATSAPP_CLOUD_ACCESS_TOKEN || "EAAZA8rZAVvxkABSkJZA30xX7Tf2LzUXISuvkWAZCQ6u6RoSnpCwgCGPGcZCZCErREoueVnxFp0OlGwBNpkXdYyaiXOkVLZCHzGEi1M0GYDn8ZBTqTvcDm2DeNzZAwaDKZBKzZAMAnxcYYDQeQsIbOnbkGfeukxvI4lxM3INPcD8lYk4c1Po2WYWpeHjj0TIPrM1nIYZChDlJveqvF9G0AjnbtndIju5WBA6o6ZBBTYhtMptZB0Wi4W1KhLQ12OJkEzgnZBJoz5gZAgT1k0ZC7CLilfKoKFcV78Ot6";
+    const globalPhone = process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID || "1328348923692461";
+    const hasGlobalCreds = !!(globalToken && globalPhone);
 
     if (hasTenantCreds || hasGlobalCreds) {
       // 1. Use Cloud API (WhatsApp Business) if configured
