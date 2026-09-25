@@ -251,7 +251,7 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
             parameters: [
               { type: "text", text: item.recipientName || "Customer" }, // {{1}}
               { type: "text", text: item.customer?.account || "Pending" }, // {{2}}
-              { type: "text", text: item.customer?.product || "Product" }  // {{3}}
+              { type: "text", text: item.customer?.productName || "Product" }  // {{3}}
             ]
           }
         ];
