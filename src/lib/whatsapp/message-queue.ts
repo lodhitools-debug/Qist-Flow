@@ -222,7 +222,7 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
 
     const hasTenantCreds = tenant?.waApiToken && tenant?.waPhoneNumberId;
     
-    const globalToken = process.env.WHATSAPP_CLOUD_ACCESS_TOKEN || "EAAZA8rZAVvxkABSkJZA30xX7Tf2LzUXISuvkWAZCQ6u6RoSnpCwgCGPGcZCZCErREoueVnxFp0OlGwBNpkXdYyaiXOkVLZCHzGEi1M0GYDn8ZBTqTvcDm2DeNzZAwaDKZBKzZAMAnxcYYDQeQsIbOnbkGfeukxvI4lxM3INPcD8lYk4c1Po2WYWpeHjj0TIPrM1nIYZChDlJveqvF9G0AjnbtndIju5WBA6o6ZBBTYhtMptZB0Wi4W1KhLQ12OJkEzgnZBJoz5gZAgT1k0ZC7CLilfKoKFcV78Ot6";
+    const globalToken = process.env.WHATSAPP_CLOUD_ACCESS_TOKEN || "EAAZA8rZAVvxkABSiGUBbAPoEKpuY6PHkNdWoUbJI5WWWdVhjObdvjOFVjKsgqIf8TsJh5CTpS441uWdv6s8r9sZBpOf3RbH7XzcsXS3GSuIczyB7TGzwHSCktZBmAAQrqm9AALcuxfM2H0dpbZCwXZCRZAKms6kokIZCZBIukRamM8ZBrGcP87aTXH6XCZBhXn5sQ9LYeU2aVszFkhV31WMoo5ZAZC9a1k1gSJ2e6fbpZAXsvZAuH7cdLc4xXWQM6UYcJeQQppPbj3YZBcluB0KFfZAP4ZCtLyE7KZCHQZDZD";
     const globalPhone = process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID || "1328348923692461";
     const hasGlobalCreds = !!(globalToken && globalPhone);
 
