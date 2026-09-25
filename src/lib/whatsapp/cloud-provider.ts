@@ -51,6 +51,25 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
 
     try {
       const cleanPhone = payload.recipientPhone.replace(/[^0-9]/g, "");
+      
+      let reqBody: any = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: cleanPhone,
+      };
+
+      if ((payload as any).templateName) {
+        reqBody.type = "template";
+        reqBody.template = {
+          name: (payload as any).templateName,
+          language: { code: "en_US" },
+          components: (payload as any).components || []
+        };
+      } else {
+        reqBody.type = "text";
+        reqBody.text = { preview_url: false, body: payload.messageText };
+      }
+
       const res = await fetch(
         `https://graph.facebook.com/v19.0/${this.phoneNumberId}/messages`,
         {
@@ -59,13 +78,7 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
             Authorization: `Bearer ${this.accessToken}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            messaging_product: "whatsapp",
-            recipient_type: "individual",
-            to: cleanPhone,
-            type: "text",
-            text: { preview_url: false, body: payload.messageText },
-          }),
+          body: JSON.stringify(reqBody),
         }
       );
 

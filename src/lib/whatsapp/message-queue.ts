@@ -192,6 +192,10 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
       approvalStatus: { not: "PENDING_APPROVAL" },
       ...(forceProcessAll ? {} : { scheduledFor: { lte: new Date() } }),
     },
+    include: {
+      template: true,
+      customer: true,
+    },
     orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
     take: maxBatchSize,
   });
@@ -234,11 +238,32 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
         data: { status: "SENDING" },
       });
 
+      // Extract variables from the customer object if we have a template
+      let components: any[] = [];
+      let templateName: string | undefined = undefined;
+      
+      if (item.template?.name) {
+        templateName = item.template.name;
+        // The templates require {{1}} Name, {{2}} Account, {{3}} Product
+        components = [
+          {
+            type: "body",
+            parameters: [
+              { type: "text", text: item.recipientName || "Customer" }, // {{1}}
+              { type: "text", text: item.customer?.account || "Pending" }, // {{2}}
+              { type: "text", text: item.customer?.product || "Product" }  // {{3}}
+            ]
+          }
+        ];
+      }
+
       sendResult = await cloudProvider.sendMessage({
         recipientPhone: item.recipientPhone,
         messageText: item.messageText,
         customerId: item.customerId || undefined,
-      });
+        templateName: templateName,
+        components: components,
+      } as any);
 
     } else {
       // 2. Fallback to Baileys (Personal WhatsApp Scanning)
