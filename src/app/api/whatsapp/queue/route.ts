@@ -58,11 +58,14 @@ export async function POST(req: NextRequest) {
 
     if (action === "process") {
       // Force process all queued messages by resetting their scheduledFor time to now
-      // so the AlwaysData background worker picks them up immediately.
       const updateResult = await prisma.messageQueue.updateMany({
         where: { status: "QUEUED", tenantId: session.tenantId },
         data: { scheduledFor: new Date() },
       });
+      
+      // Actually trigger the worker so messages get sent
+      processQueueWorker(50, true).catch(err => console.error("Manual process worker error:", err));
+      
       return NextResponse.json({
         success: true,
         message: `Forced ${updateResult.count} pending messages to process immediately.`,
