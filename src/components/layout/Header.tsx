@@ -147,7 +147,7 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
           </Link>
 
           <Link
-            href="/recovery/send-reminders"
+            href="/recovery/customer-reminders"
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 dark:bg-emerald-600 text-white hover:bg-slate-800 transition-colors shadow-sm"
           >
             <Send className="w-3.5 h-3.5" />
