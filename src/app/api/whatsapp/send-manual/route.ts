@@ -122,19 +122,10 @@ export async function POST(req: NextRequest) {
       },
     }).catch(() => {});
 
-    // Notify AlwaysData worker if not pending approval
+    // Process immediately via Vercel if not pending approval
     if (approvalStatus !== "PENDING_APPROVAL") {
-      const workerUrl = process.env.WHATSAPP_SERVICE_URL;
-      const workerSecret = process.env.WHATSAPP_SERVICE_SECRET;
-      if (workerUrl) {
-        fetch(`${workerUrl}/api/wa/trigger-queue`, {
-          method: "POST",
-          headers: {
-            "x-whatsapp-secret": workerSecret || "",
-          },
-          signal: AbortSignal.timeout(1000),
-        }).catch(() => {});
-      }
+      const { processQueueWorker } = await import("@/lib/whatsapp/message-queue");
+      processQueueWorker(1, true).catch(err => console.error("Vercel Queue Worker Error:", err));
     }
 
     // Return immediate non-blocking JSON response

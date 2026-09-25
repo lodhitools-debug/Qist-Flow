@@ -39,6 +39,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Process the queue immediately in Vercel to bypass the old AlwaysData worker!
+    const { processQueueWorker } = await import("@/lib/whatsapp/message-queue");
+    // Run asynchronously so it doesn't block the API response
+    processQueueWorker(items.length, true).catch(err => console.error("Vercel Queue Worker Error:", err));
+
     return NextResponse.json({
       success: true,
       message: `Successfully queued ${result.enqueued} reminder messages. (${result.duplicates} duplicate(s) protected, ${result.errors} error(s)).`,
