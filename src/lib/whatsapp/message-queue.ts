@@ -216,9 +216,14 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
     let sendResult;
     let usedSenderId = null;
 
-    if (tenant?.waApiToken && tenant?.waPhoneNumberId) {
+    const hasTenantCreds = tenant?.waApiToken && tenant?.waPhoneNumberId;
+    const hasGlobalCreds = process.env.WHATSAPP_CLOUD_ACCESS_TOKEN && process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID;
+
+    if (hasTenantCreds || hasGlobalCreds) {
       // 1. Use Cloud API (WhatsApp Business) if configured
-      const cloudProvider = new WhatsAppCloudProvider(tenant.waPhoneNumberId, tenant.waApiToken);
+      const phoneId = tenant?.waPhoneNumberId || undefined;
+      const apiToken = tenant?.waApiToken || undefined;
+      const cloudProvider = new WhatsAppCloudProvider(phoneId, apiToken);
       
       // Mark as SENDING
       await prisma.messageQueue.update({

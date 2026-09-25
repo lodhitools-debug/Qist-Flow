@@ -6,7 +6,7 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
   private accessToken: string;
 
   constructor(phoneNumberId?: string, accessToken?: string) {
-    this.phoneNumberId = phoneNumberId || process.env.WHATSAPP_CLOUD_PHONE_ID || "";
+    this.phoneNumberId = phoneNumberId || process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID || "";
     this.accessToken = accessToken || process.env.WHATSAPP_CLOUD_ACCESS_TOKEN || "";
   }
 
