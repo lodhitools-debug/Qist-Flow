@@ -9,7 +9,8 @@ export async function GET(req: NextRequest) {
     const token = searchParams.get('hub.verify_token');
     const challenge = searchParams.get('hub.challenge');
 
-    const verifyToken = process.env.WHATSAPP_CLOUD_WEBHOOK_VERIFY_TOKEN;
+    // Agar Vercel mein env variable set nahi hai to hum direct string use kar lenge
+    const verifyToken = process.env.WHATSAPP_CLOUD_WEBHOOK_VERIFY_TOKEN || 'qistflow_meta_webhook_secret_2026';
 
     // Check if the verify token matches what we set in the dashboard
     if (mode === 'subscribe' && token === verifyToken) {
