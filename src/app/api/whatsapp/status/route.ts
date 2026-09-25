@@ -33,7 +33,8 @@ export async function GET(req: NextRequest) {
       queueStats = { queued, sending, sentToday, failedToday };
     } catch {}
 
-    const isConnected = dbSession?.status === "CONNECTED" && !!dbSession?.connectedPhone;
+    const hasCloudCreds = !!(process.env.WHATSAPP_CLOUD_ACCESS_TOKEN && process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID);
+    const isConnected = hasCloudCreds || (dbSession?.status === "CONNECTED" && !!dbSession?.connectedPhone);
     let computedStatus = isConnected ? "CONNECTED" : (dbSession?.status || "NOT_CONNECTED");
 
     // Clear expired QR from DB
@@ -54,8 +55,8 @@ export async function GET(req: NextRequest) {
         qrCode: isConnected ? null : qrCode,
         qrExpiresAt: dbSession?.qrExpiresAt || null,
         pairingCode: isConnected ? null : (dbSession?.pairingCode || null),
-        phone: dbSession?.connectedPhone || null,
-        name: dbSession?.connectedName || null,
+        phone: hasCloudCreds ? "Cloud API" : (dbSession?.connectedPhone || null),
+        name: hasCloudCreds ? "Meta Business" : (dbSession?.connectedName || null),
         connectedAt: dbSession?.connectedAt || null,
         lastDisconnectedAt: dbSession?.lastDisconnectedAt || null,
         errorMessage: dbSession?.errorMessage || null,
