@@ -242,8 +242,8 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
       let components: any[] = [];
       let templateName: string | undefined = undefined;
       
-      if (item.template?.name) {
-        templateName = item.template.name;
+      if (item.template?.slug) {
+        templateName = item.template.slug.replace(/-/g, '_');
         // The templates require {{1}} Name, {{2}} Account, {{3}} Product
         components = [
           {
