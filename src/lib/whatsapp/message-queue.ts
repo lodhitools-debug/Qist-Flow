@@ -185,6 +185,20 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
   sent: number;
   failed: number;
 }> {
+  // Auto-recover any stale SENDING messages older than 5 minutes
+  try {
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    await prisma.messageQueue.updateMany({
+      where: {
+        status: "SENDING",
+        updatedAt: { lte: fiveMinutesAgo },
+      },
+      data: {
+        status: "QUEUED",
+      },
+    });
+  } catch {}
+
   // Get pending items ordered by priority DESC (manual priority 100 first, then guarantor 50, then reminders), then createdAt ASC
   const pendingItems = await prisma.messageQueue.findMany({
     where: {

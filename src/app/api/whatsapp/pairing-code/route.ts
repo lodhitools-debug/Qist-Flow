@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     if (serviceUrl) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000); // Allow up to 12s for WhatsApp pairing code generation
+        const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s fast timeout, then instant DB fallback
         const workerRes = await fetch(`${serviceUrl}/api/wa/pairing-code`, {
           method: "POST",
           headers: {
