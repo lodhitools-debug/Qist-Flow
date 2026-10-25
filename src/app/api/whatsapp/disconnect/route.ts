@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
-    const secret = process.env.WHATSAPP_SERVICE_SECRET || "";
+    const secret = process.env.WHATSAPP_SERVICE_SECRET || "cc6c5a96c0f8f1b73e9635c431e72327171db73d17d589ed8aaa2039fcd5017a";
 
     // 1. Tell the worker to close the socket immediately
     if (serviceUrl) {

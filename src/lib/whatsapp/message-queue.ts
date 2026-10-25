@@ -212,24 +212,24 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
 
   for (const item of pendingItems) {
     // Determine the WhatsApp provider for this Tenant
-    const tenant = await prisma.tenant.findUnique({
-      where: { id: item.tenantId },
-      select: { waApiToken: true, waPhoneNumberId: true },
-    });
+    let tenant: any = null;
+    try {
+      tenant = await prisma.tenant.findUnique({
+        where: { id: item.tenantId },
+      });
+    } catch {}
 
     let sendResult;
     let usedSenderId = null;
 
-    const hasTenantCreds = tenant?.waApiToken && tenant?.waPhoneNumberId;
-    
-    const globalToken = process.env.WHATSAPP_CLOUD_ACCESS_TOKEN || "EAAZA8rZAVvxkABSiGUBbAPoEKpuY6PHkNdWoUbJI5WWWdVhjObdvjOFVjKsgqIf8TsJh5CTpS441uWdv6s8r9sZBpOf3RbH7XzcsXS3GSuIczyB7TGzwHSCktZBmAAQrqm9AALcuxfM2H0dpbZCwXZCRZAKms6kokIZCZBIukRamM8ZBrGcP87aTXH6XCZBhXn5sQ9LYeU2aVszFkhV31WMoo5ZAZC9a1k1gSJ2e6fbpZAXsvZAuH7cdLc4xXWQM6UYcJeQQppPbj3YZBcluB0KFfZAP4ZCtLyE7KZCHQZDZD";
-    const globalPhone = process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID || "1328348923692461";
-    const hasGlobalCreds = !!(globalToken && globalPhone);
+    const providerType = (process.env.WHATSAPP_PROVIDER_TYPE || "WEB").toUpperCase();
+    const hasTenantCloudCreds = !!(tenant?.waApiToken && tenant?.waPhoneNumberId);
+    const useCloud = providerType === "CLOUD" || hasTenantCloudCreds;
 
-    if (hasTenantCreds || hasGlobalCreds) {
+    if (useCloud) {
       // 1. Use Cloud API (WhatsApp Business) if configured
-      const phoneId = tenant?.waPhoneNumberId || undefined;
-      const apiToken = tenant?.waApiToken || undefined;
+      const phoneId = tenant?.waPhoneNumberId || process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID;
+      const apiToken = tenant?.waApiToken || process.env.WHATSAPP_CLOUD_ACCESS_TOKEN;
       const cloudProvider = new WhatsAppCloudProvider(phoneId, apiToken);
       
       // Mark as SENDING

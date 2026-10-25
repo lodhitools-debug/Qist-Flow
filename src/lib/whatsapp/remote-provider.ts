@@ -18,7 +18,7 @@ export class RemoteWhatsAppProvider implements IWhatsAppProvider {
 
   constructor() {
     this.serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
-    this.secret = process.env.WHATSAPP_SERVICE_SECRET || "";
+    this.secret = process.env.WHATSAPP_SERVICE_SECRET || "cc6c5a96c0f8f1b73e9635c431e72327171db73d17d589ed8aaa2039fcd5017a";
   }
 
   private async request(endpoint: string, options: RequestInit = {}): Promise<any> {

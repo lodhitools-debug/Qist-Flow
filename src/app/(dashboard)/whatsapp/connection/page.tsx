@@ -118,8 +118,8 @@ export default function WhatsAppConnectionPage() {
   const [connectedAt, setConnectedAt] = useState<string | null>(null);
   const [errorMsg, setErrorMsg]       = useState<string | null>(null);
   
-  // New states for Pairing Code logic
-  const [connectionMode, setConnectionMode] = useState<"QR" | "PHONE">("QR");
+  // States for Pairing Code & QR logic
+  const [connectionMode, setConnectionMode] = useState<"QR" | "PHONE">("PHONE");
   const [inputPhone, setInputPhone]         = useState<string>("");
   const [pairingCode, setPairingCode]       = useState<string | null>(null);
 
@@ -279,6 +279,9 @@ export default function WhatsAppConnectionPage() {
       showNotice("error", data?.error || "Could not request pairing code. Please try again.");
     } else {
       setStatus("PAIRING");
+      if (data?.pairingCode) {
+        setPairingCode(data.pairingCode);
+      }
       fetchStatus();
     }
   };
@@ -636,26 +639,81 @@ export default function WhatsAppConnectionPage() {
               </div>
             </div>
 
-            <button
-              disabled={loadingConnect}
-              onClick={() => handleConnect(true)}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm disabled:opacity-50 transition-colors shadow-md shadow-emerald-500/20"
-            >
-              {loadingConnect ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
-              {loadingConnect ? "Generating QR..." : "Connect WhatsApp"}
-            </button>
+            {/* Mode Selector */}
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setConnectionMode("PHONE")}
+                className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-colors ${connectionMode === "PHONE" ? "bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+              >
+                Phone Number (8-Digit Code)
+              </button>
+              <button
+                type="button"
+                onClick={() => setConnectionMode("QR")}
+                className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-colors ${connectionMode === "QR" ? "bg-white dark:bg-slate-700 shadow-sm text-slate-900 dark:text-white" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+              >
+                Scan QR Code
+              </button>
+            </div>
+
+            {connectionMode === "PHONE" ? (
+              <form onSubmit={handleRequestPairingCode} className="space-y-4 animate-in fade-in">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 ml-1">Your WhatsApp Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 03001234567 or 923001234567"
+                    value={inputPhone}
+                    onChange={(e) => setInputPhone(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white"
+                  />
+                  <p className="text-[11px] text-slate-400 ml-1">
+                    Enter the WhatsApp number on your phone. You will get an 8-digit code to link instantly.
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loadingConnect || !inputPhone || inputPhone.trim().length < 9}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm disabled:opacity-50 transition-colors shadow-md shadow-emerald-600/20"
+                >
+                  {loadingConnect ? <Loader2 className="w-4 h-4 animate-spin" /> : <Smartphone className="w-4 h-4" />}
+                  {loadingConnect ? "Generating Pairing Code..." : "Get Pairing Code"}
+                </button>
+              </form>
+            ) : (
+              <div className="space-y-4 animate-in fade-in">
+                <button
+                  disabled={loadingConnect}
+                  onClick={() => handleConnect(true)}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm disabled:opacity-50 transition-colors shadow-md shadow-emerald-500/20"
+                >
+                  {loadingConnect ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+                  {loadingConnect ? "Generating QR..." : "Connect with QR Code"}
+                </button>
+              </div>
+            )}
 
             {/* Instructions */}
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">How to connect</p>
+            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                {connectionMode === "PHONE" ? "How to link with code" : "How to scan QR"}
+              </p>
               <ol className="space-y-2">
-                {[
-                  "Click \"Connect WhatsApp\" above",
+                {(connectionMode === "PHONE" ? [
+                  "Enter your WhatsApp number above and click 'Get Pairing Code'",
+                  "An 8-digit code will appear on your screen (e.g. ABCD-1234)",
+                  "Open WhatsApp on your phone → Settings → Linked Devices",
+                  "Tap 'Link a Device' → 'Link with phone number instead'",
+                  "Type the 8-digit code into your phone to connect 24/7",
+                ] : [
+                  "Click 'Connect with QR Code' above",
                   "A QR code will appear on screen",
                   "Open WhatsApp on your phone",
                   "Go to Settings → Linked Devices → Link a Device",
-                  "Scan the QR code",
-                ].map((step, i) => (
+                  "Scan the QR code with your phone camera",
+                ]).map((step, i) => (
                   <li key={i} className="flex items-start gap-2.5 text-xs text-slate-600 dark:text-slate-400">
                     <span className="flex-shrink-0 w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 font-bold flex items-center justify-center text-[10px]">
                       {i + 1}

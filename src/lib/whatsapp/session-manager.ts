@@ -58,6 +58,8 @@ export class UserWhatsAppSession {
   private userRequestedDisconnect: boolean = false; // Prevents auto-reconnect after user disconnect
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private qrWatchdogTimeout: NodeJS.Timeout | null = null;
+  private presenceInterval: NodeJS.Timeout | null = null;
+  private lastSavedDbHash: string = "";
 
   constructor(userId: string, tenantId: string = "default") {
     this.userId = userId;
@@ -124,13 +126,22 @@ export class UserWhatsAppSession {
 
   // ── DB sync — ONLY writes to this user's own row, NEVER to "default" ──────
 
-  public async updateDbSession(): Promise<void> {
+  // ── DB sync — ONLY writes to this user's own row, NEVER to "default" ──────
+
+  public async updateDbSession(force: boolean = false): Promise<void> {
     if (!this.userId || this.userId === "default") return;
+
+    // Check if the state really changed to prevent exhausting Supabase connection pool
+    const currentHash = `${this.connectionState}|${this.pairingCode || ""}|${this.connectedPhone || ""}|${this.qrCodeDataUrl ? "QR" : ""}|${this.errorMessage || ""}`;
+    if (!force && currentHash === this.lastSavedDbHash) {
+      return;
+    }
+
     try {
       await prisma.whatsAppSession.upsert({
         where: { userId: this.userId },
         update: {
-          tenantId: this.tenantId, // ← Multi-tenant isolation
+          tenantId: this.tenantId,
           status: this.connectionState,
           qrCode: this.qrCodeDataUrl,
           qrExpiresAt: this.qrExpiresAt,
@@ -146,7 +157,7 @@ export class UserWhatsAppSession {
         },
         create: {
           userId: this.userId,
-          tenantId: this.tenantId, // ← Multi-tenant isolation
+          tenantId: this.tenantId,
           status: this.connectionState,
           qrCode: this.qrCodeDataUrl,
           qrExpiresAt: this.qrExpiresAt,
@@ -159,11 +170,10 @@ export class UserWhatsAppSession {
           reconnectAttempts: this.reconnectAttempts,
           errorMessage: this.errorMessage,
         },
-      }).catch((err) => {
-        console.warn(`⚠️ [DB Sync Warning for User ${this.userId}]:`, err.message);
       });
+      this.lastSavedDbHash = currentHash;
     } catch (err: any) {
-      console.warn(`⚠️ [DB Sync Error for User ${this.userId}]:`, err.message);
+      console.warn(`⚠️ [DB Sync Warning for User ${this.userId}]:`, err.message);
     }
   }
 
@@ -178,6 +188,10 @@ export class UserWhatsAppSession {
       clearTimeout(this.qrWatchdogTimeout);
       this.qrWatchdogTimeout = null;
     }
+    if (this.presenceInterval) {
+      clearInterval(this.presenceInterval);
+      this.presenceInterval = null;
+    }
   }
 
   public destroySocket() {
@@ -190,7 +204,7 @@ export class UserWhatsAppSession {
     }
   }
 
-  // ── QR watchdog: if no QR arrives within 30s, reset to NOT_CONNECTED ──────
+  // ── QR watchdog: if no QR arrives within 60s, reset to NOT_CONNECTED ──────
 
   private startQrWatchdog() {
     this.clearTimers();
@@ -227,14 +241,19 @@ export class UserWhatsAppSession {
     this.destroySocket();
     this.clearTimers();
 
+    const isPairingMode = this.connectionState === "PAIRING";
     this.isConnecting = true;
-    this.connectionState = "CONNECTING";
+    if (!isPairingMode) {
+      this.connectionState = "CONNECTING";
+    }
     this.errorMessage = null;
     this.userRequestedDisconnect = false;
     await this.updateDbSession();
 
-    // Start QR watchdog
-    this.startQrWatchdog();
+    // Start QR watchdog only if NOT in pairing mode
+    if (!isPairingMode) {
+      this.startQrWatchdog();
+    }
 
     try {
       const { state, saveCreds } = await useMultiFileAuthState(this.sessionDir);
@@ -251,14 +270,14 @@ export class UserWhatsAppSession {
         logger,
         printQRInTerminal: false,
         auth: state,
-        browser: ["QistFlow", "Chrome", "1.0.0"],
+        browser: Browsers.ubuntu("Chrome"),
         connectTimeoutMs: 60_000,
         defaultQueryTimeoutMs: 60_000,
-        keepAliveIntervalMs: 15_000,
+        keepAliveIntervalMs: 25_000,
         retryRequestDelayMs: 2_000,
         maxMsgRetryCount: 3,
         syncFullHistory: false,
-        markOnlineOnConnect: false,
+        markOnlineOnConnect: true,
         generateHighQualityLinkPreview: false,
         getMessage: async () => undefined,
       });
@@ -276,8 +295,9 @@ export class UserWhatsAppSession {
           this.qrCodeString = null;
           this.qrCodeDataUrl = null;
           this.qrExpiresAt = null;
+          this.pairingCode = null;
           this.clearTimers();
-          await this.updateDbSession();
+          await this.updateDbSession(true);
         }
       });
 
@@ -287,6 +307,12 @@ export class UserWhatsAppSession {
 
         // QR Code generated
         if (qr && !state.creds?.registered) {
+          // If in PAIRING mode, DO NOT overwrite with QR_READY and DO NOT start 60s destroy timeout!
+          if (this.connectionState === "PAIRING") {
+            console.log(`📲 [User ${this.userId}] QR emitted by Baileys, but user is in PAIRING mode — keeping PAIRING active.`);
+            return;
+          }
+
           this.clearTimers(); // Cancel watchdog — QR arrived
           this.qrCodeString = qr;
           try {
@@ -303,14 +329,14 @@ export class UserWhatsAppSession {
           // Auto-refresh QR after expiry
           setTimeout(async () => {
             if (this.connectionState === "QR_READY" && !this.isConnected()) {
-              console.log(`🔄 [User ${this.userId}] QR expired — user must request fresh QR.`);
+              console.log(`🔄 [User ${this.userId}] QR expired — resetting to NOT_CONNECTED.`);
               this.destroySocket();
               this.isConnecting = false;
               this.connectionState = "NOT_CONNECTED";
               this.qrCodeDataUrl = null;
               this.qrCodeString = null;
               this.qrExpiresAt = null;
-              await this.updateDbSession();
+              await this.updateDbSession(true);
             }
           }, 62_000);
         }
@@ -318,59 +344,57 @@ export class UserWhatsAppSession {
         // Connection closed
         if (connection === "close") {
           const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
-          console.log(`⚠️ [User ${this.userId}] Socket closed: code=${statusCode}`);
+          console.log(`⚠️ [User ${this.userId}] Socket closed: code=${statusCode}, msg=${lastDisconnect?.error?.message}`);
           this.clearTimers();
           this.destroySocket();
           this.isConnecting = false;
 
-          // Logged out from phone
+          // 1. Explicitly logged out from phone
           if (statusCode === DisconnectReason.loggedOut) {
+            console.log(`🚫 [User ${this.userId}] Logged out by phone.`);
             await this.logout();
             return;
           }
 
-          // User intentionally disconnected — do NOT reconnect
+          // 2. User intentionally clicked Disconnect in UI — do NOT auto-reconnect
           if (this.userRequestedDisconnect) {
             console.log(`🛑 [User ${this.userId}] User-requested disconnect — not reconnecting.`);
             this.connectionState = "DISCONNECTED";
             this.lastDisconnectedAt = new Date();
-            await this.updateDbSession();
+            await this.updateDbSession(true);
             return;
           }
 
-          // QR timed out without scan (408)
-          if (statusCode === 408) {
-            console.log(`🔄 [User ${this.userId}] QR expired (408) — resetting to NOT_CONNECTED.`);
+          // 3. Check if session has saved credentials or was registered
+          const isRegistered = !!(state.creds?.registered || state.creds?.me || this.hasSavedAuth());
+
+          // 4. If NOT registered (unauthenticated QR / pairing phase), reset
+          if (!isRegistered) {
+            console.log(`🔄 [User ${this.userId}] Unauthenticated session closed (code=${statusCode}) — resetting to NOT_CONNECTED.`);
             this.connectionState = "NOT_CONNECTED";
             this.qrCodeString = null;
             this.qrCodeDataUrl = null;
             this.qrExpiresAt = null;
+            this.pairingCode = null;
             this.errorMessage = null;
-            await this.updateDbSession();
+            await this.updateDbSession(true);
             return;
           }
 
-          // Transient error / restart required — reconnect with backoff
-          const isRegistered = !!(state.creds?.registered || state.creds?.me || this.hasSavedAuth());
-          const isRestart = statusCode === DisconnectReason.restartRequired || statusCode === 515;
-
-          if (isRegistered || isRestart) {
-            this.connectionState = "RECONNECTING";
-            this.reconnectAttempts++;
-            const backoffMs = Math.min(1_000 * Math.pow(1.5, Math.min(this.reconnectAttempts, 6)), 15_000);
-            console.log(`🔄 [User ${this.userId}] Reconnecting in ${backoffMs}ms (attempt ${this.reconnectAttempts})...`);
-            await this.updateDbSession();
-            this.reconnectTimeout = setTimeout(() => {
-              if (!this.isLoggedOut && !this.userRequestedDisconnect) {
-                this.init().catch(() => {});
-              }
-            }, backoffMs);
-          } else {
-            this.connectionState = "ERROR";
-            this.errorMessage = lastDisconnect?.error?.message || "Connection closed unexpectedly";
-            this.lastDisconnectedAt = new Date();
-            await this.updateDbSession();
-          }
+          // 5. REGISTERED SESSION: ALWAYS AUTO-RECONNECT 24/7!
+          // Whether restartRequired (515), connectionLost (408), connectionClosed (428), badSession (500), etc.
+          this.connectionState = "RECONNECTING";
+          this.reconnectAttempts++;
+          const backoffMs = Math.min(2_000 * Math.pow(1.3, Math.min(this.reconnectAttempts, 8)), 25_000);
+          console.log(`🔄 [User ${this.userId}] Registered session dropped — auto-reconnecting in ${Math.round(backoffMs)}ms (attempt ${this.reconnectAttempts})...`);
+          await this.updateDbSession();
+          this.reconnectTimeout = setTimeout(() => {
+            if (!this.isLoggedOut && !this.userRequestedDisconnect) {
+              this.init().catch((err) => {
+                console.error(`❌ [User ${this.userId}] Auto-reconnect failed:`, err.message);
+              });
+            }
+          }, backoffMs);
         }
 
         // Successfully connected / open
@@ -394,7 +418,16 @@ export class UserWhatsAppSession {
             console.log(`🎉 [User ${this.userId}] Connected as: ${this.connectedName} (${this.connectedPhone})`);
           }
 
-          await this.updateDbSession();
+          await this.updateDbSession(true);
+
+          // 24/7 Keep-alive presence heartbeat (every 4 minutes)
+          this.presenceInterval = setInterval(async () => {
+            try {
+              if (this.sock && this.connectionState === "CONNECTED") {
+                await this.sock.sendPresenceUpdate("available");
+              }
+            } catch {}
+          }, 1000 * 60 * 4);
         }
       });
     } catch (err: any) {
@@ -404,7 +437,7 @@ export class UserWhatsAppSession {
       this.connectionState = "ERROR";
       this.errorMessage = err.message || "Failed to initialize WhatsApp socket";
       console.error(`❌ [User ${this.userId}] Init error:`, err.message);
-      await this.updateDbSession();
+      await this.updateDbSession(true);
     }
   }
 
@@ -423,18 +456,17 @@ export class UserWhatsAppSession {
       throw new Error("Invalid phone number. Must include country code (e.g. 923001234567).");
     }
 
-    // If already connected with saved auth, disconnect first to close old socket
-    if (this.hasSavedAuth() || this.sock) {
-      await this.disconnect();
-      // Reset the guard so init() is not blocked after user-requested disconnect
-      this.userRequestedDisconnect = false;
-    }
-
+    // Set state to PAIRING before init so that init() and connection.update know we are pairing
     this.connectionState = "PAIRING";
     this.pairingCode = null;
     this.qrCodeDataUrl = null;
     this.qrCodeString = null;
-    await this.updateDbSession();
+    this.userRequestedDisconnect = false;
+    await this.updateDbSession(true);
+
+    // Destroy any old socket cleanly
+    this.destroySocket();
+    this.clearTimers();
 
     await this.init();
 
@@ -446,19 +478,20 @@ export class UserWhatsAppSession {
     }
     if (!this.sock) throw new Error("WhatsApp socket initialization timed out.");
 
-    // Wait for WebSocket handshake
-    await new Promise((r) => setTimeout(r, 3_500));
+    // Wait for WebSocket handshake to settle
+    await new Promise((r) => setTimeout(r, 3_000));
 
     try {
       const code = await this.sock.requestPairingCode(cleanPhone);
       this.pairingCode = code;
       this.connectionState = "PAIRING";
-      await this.updateDbSession();
+      console.log(`🔑 [User ${this.userId}] Pairing Code generated: ${code}`);
+      await this.updateDbSession(true);
       return code;
     } catch (err: any) {
       this.connectionState = "ERROR";
-      this.errorMessage = err.message;
-      await this.updateDbSession();
+      this.errorMessage = err.message || "Failed to generate pairing code";
+      await this.updateDbSession(true);
       throw err;
     }
   }

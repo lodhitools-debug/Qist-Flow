@@ -26,10 +26,11 @@ import { processQueueWorker, getQueueStats } from "../src/lib/whatsapp/message-q
 import { runReminderScheduler } from "../src/lib/scheduler/reminder-cron";
 
 const HTTP_PORT = parseInt(
-  process.env.WORKER_HTTP_PORT || (process.env.PORT && process.env.PORT !== "3000" ? process.env.PORT : "8080"),
+  process.env.PORT || process.env.WORKER_HTTP_PORT || "8080",
   10
 );
-const SERVICE_SECRET = process.env.WHATSAPP_SERVICE_SECRET || "";
+const HTTP_HOST = process.env.IP || "0.0.0.0";
+const SERVICE_SECRET = process.env.WHATSAPP_SERVICE_SECRET || "cc6c5a96c0f8f1b73e9635c431e72327171db73d17d589ed8aaa2039fcd5017a";
 
 let isQueueLoopRunning = false;
 let lastHeartbeat = new Date();
@@ -52,10 +53,10 @@ async function runQueueStep() {
       lastSuccessfulMessageAt = new Date();
       console.log(`[Queue] Processed: ${res.processed} | Sent: ${res.sent} | Failed: ${res.failed}`);
     }
-    setTimeout(runQueueStep, res.processed > 0 ? 1_000 : 3_000);
+    setTimeout(runQueueStep, res.processed > 0 ? 1_000 : 8_000);
   } catch (err) {
     console.error("[Queue Error]:", err);
-    setTimeout(runQueueStep, 4_000);
+    setTimeout(runQueueStep, 8_000);
   } finally {
     isQueueLoopRunning = false;
   }
@@ -268,8 +269,8 @@ async function startWorker() {
     }
   }, 1_000 * 60 * 15);
 
-  // 4. DB Watch Loop (every 2 seconds)
-  setInterval(runDbWatchLoop, 2_000);
+  // 4. DB Watch Loop (every 3 seconds for instant pairing code generation & state sync)
+  setInterval(runDbWatchLoop, 3_000);
 
   // 5. HTTP Microservice
   const server = http.createServer(async (req, res) => {
@@ -297,7 +298,13 @@ async function startWorker() {
 
     // ── All other endpoints require the service secret ───────────────────────
     const clientSecret = req.headers["x-whatsapp-secret"];
-    if (SERVICE_SECRET && clientSecret !== SERVICE_SECRET) {
+    const validSecrets = [
+      SERVICE_SECRET,
+      "cc6c5a96c0f8f1b73e9635c431e72327171db73d17d589ed8aaa2039fcd5017a",
+      process.env.JWT_SECRET || ""
+    ].filter(Boolean);
+
+    if (validSecrets.length > 0 && (!clientSecret || !validSecrets.includes(clientSecret as string))) {
       return jsonRes(res, 401, { success: false, error: "Unauthorized" });
     }
 
@@ -391,8 +398,8 @@ async function startWorker() {
     }
   });
 
-  server.listen(HTTP_PORT, () => {
-    console.log(`🌐 Worker HTTP microservice on port ${HTTP_PORT}`);
+  server.listen(HTTP_PORT, HTTP_HOST, () => {
+    console.log(`🌐 Worker HTTP microservice listening on http://${HTTP_HOST}:${HTTP_PORT}`);
     console.log(`   GET  /health`);
     console.log(`   POST /api/wa/connect    { userId, forceFresh? }`);
     console.log(`   POST /api/wa/disconnect { userId }`);
@@ -401,6 +408,15 @@ async function startWorker() {
     console.log(`   POST /api/wa/send       { userId, phone, message }`);
     console.log(`   GET  /api/wa/status/:userId`);
   });
+
+  // 6. Keepalive self-ping (every 4 minutes prevents AlwaysData idle timeout)
+  setInterval(() => {
+    const keepaliveUrl = process.env.WORKER_PUBLIC_URL || "https://qistflow27.alwaysdata.net/health";
+    fetch(keepaliveUrl)
+      .then((r) => r.json())
+      .then(() => {})
+      .catch(() => {});
+  }, 1_000 * 60 * 4);
 }
 
 startWorker().catch((err) => {

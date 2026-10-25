@@ -53,22 +53,35 @@ export async function POST(req: NextRequest) {
     if (serviceUrl) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-        await fetch(`${serviceUrl}/api/wa/pairing-code`, {
+        const timeoutId = setTimeout(() => controller.abort(), 12000); // Allow up to 12s for WhatsApp pairing code generation
+        const workerRes = await fetch(`${serviceUrl}/api/wa/pairing-code`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "",
+            "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "cc6c5a96c0f8f1b73e9635c431e72327171db73d17d589ed8aaa2039fcd5017a",
           },
           body: JSON.stringify({ userId: targetUserId, phone: cleanPhone }),
           signal: controller.signal,
-        }).catch(() => {});
+        });
         clearTimeout(timeoutId);
-      } catch {}
+
+        if (workerRes.ok) {
+          const workerData = await workerRes.json().catch(() => null);
+          if (workerData?.pairingCode) {
+            return NextResponse.json({
+              success: true,
+              pairingCode: workerData.pairingCode,
+              message: "Pairing code generated successfully!",
+            });
+          }
+        }
+      } catch (err: any) {
+        console.warn("[Pairing Code] Direct call to AlwaysData worker timed out or failed:", err.message);
+      }
     }
 
-    // 3. Poll DB for up to 6 seconds awaiting worker to generate pairing code
-    for (let i = 0; i < 6; i++) {
+    // 3. Poll DB for up to 15 seconds awaiting worker to generate pairing code
+    for (let i = 0; i < 15; i++) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       const updated = await prisma.whatsAppSession.findUnique({ where: { userId: targetUserId } });
       if (updated?.pairingCode) {

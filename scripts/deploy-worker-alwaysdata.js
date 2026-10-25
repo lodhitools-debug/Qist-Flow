@@ -1,12 +1,13 @@
-const { execSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('ssh2');
 
-async function main() {
-  console.log('=== 1. Bundling worker with esbuild ===');
-  const esbuildCmd = [
-    'npx esbuild scripts/start-worker.ts',
+async function deploy() {
+  console.log('=== Step 1: Bundling worker.bundle.js with esbuild ===');
+  const bundleRes = spawnSync('npx', [
+    'esbuild',
+    'scripts/start-worker.ts',
     '--bundle',
     '--platform=node',
     '--target=node18',
@@ -18,130 +19,90 @@ async function main() {
     '--external:sharp',
     '--external:pino-pretty',
     '--external:bcryptjs'
-  ].join(' ');
+  ], { shell: true, stdio: 'inherit', cwd: path.resolve(__dirname, '..') });
 
-  execSync(esbuildCmd, { stdio: 'inherit', cwd: path.resolve(__dirname, '..') });
-
-  console.log('\n=== 2. Preparing clean deployment directory ===');
-  const rootDir = path.resolve(__dirname, '..');
-  const tempDir = path.join(rootDir, 'dist', 'alwaysdata_pkg');
-  
-  if (fs.existsSync(tempDir)) {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  }
-  fs.mkdirSync(tempDir, { recursive: true });
-
-  // Copy dist/worker.bundle.js
-  fs.mkdirSync(path.join(tempDir, 'dist'), { recursive: true });
-  fs.copyFileSync(
-    path.join(rootDir, 'dist', 'worker.bundle.js'),
-    path.join(tempDir, 'dist', 'worker.bundle.js')
-  );
-
-  // Copy node_modules/@prisma/client and node_modules/.prisma
-  fs.mkdirSync(path.join(tempDir, 'node_modules', '@prisma', 'client'), { recursive: true });
-  fs.cpSync(
-    path.join(rootDir, 'node_modules', '@prisma', 'client'),
-    path.join(tempDir, 'node_modules', '@prisma', 'client'),
-    { recursive: true }
-  );
-
-  fs.mkdirSync(path.join(tempDir, 'node_modules', '.prisma', 'client'), { recursive: true });
-  
-  // Copy only relevant files from .prisma/client
-  const prismaClientSrc = path.join(rootDir, 'node_modules', '.prisma', 'client');
-  for (const file of fs.readdirSync(prismaClientSrc)) {
-    // Skip Windows DLLs to keep package light
-    if (file.endsWith('.dll.node') || file.includes('windows')) continue;
-    const srcPath = path.join(prismaClientSrc, file);
-    const dstPath = path.join(tempDir, 'node_modules', '.prisma', 'client', file);
-    if (fs.statSync(srcPath).isDirectory()) {
-      fs.cpSync(srcPath, dstPath, { recursive: true });
-    } else {
-      fs.copyFileSync(srcPath, dstPath);
-    }
+  if (bundleRes.status !== 0) {
+    throw new Error('Bundling failed!');
   }
 
-  // Copy .env
-  fs.copyFileSync(path.join(rootDir, '.env'), path.join(tempDir, '.env'));
+  const bundlePath = path.resolve(__dirname, '..', 'dist', 'worker.bundle.js');
+  const stats = fs.statSync(bundlePath);
+  console.log(`Bundle built: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
 
-  // Copy package.json
-  const workerPkg = {
-    name: 'qistflow-worker',
-    version: '1.0.0',
-    description: 'QistFlow WhatsApp Worker for AlwaysData',
-    main: 'dist/worker.bundle.js',
-    scripts: {
-      start: 'node dist/worker.bundle.js'
-    },
-    dependencies: {
-      '@prisma/client': '^5.22.0'
-    }
-  };
-  fs.writeFileSync(
-    path.join(tempDir, 'package.json'),
-    JSON.stringify(workerPkg, null, 2),
-    'utf8'
-  );
-
-  // Create start.sh, stop.sh, status.sh
-  const startSh = `#!/bin/bash
-cd /home/qistflow27/qistflow-worker
-# Kill any existing node worker
-pkill -f "dist/worker.bundle.js" || true
-sleep 1
-# Start worker in background
-export NODE_ENV=production
-nohup node dist/worker.bundle.js >> /home/qistflow27/qistflow-worker/worker.log 2>&1 &
-echo "Worker started with PID $!"
-`;
-  fs.writeFileSync(path.join(tempDir, 'start.sh'), startSh, { encoding: 'utf8', mode: 0o755 });
-
-  const stopSh = `#!/bin/bash
-pkill -f "dist/worker.bundle.js" || true
-echo "Worker stopped."
-`;
-  fs.writeFileSync(path.join(tempDir, 'stop.sh'), stopSh, { encoding: 'utf8', mode: 0o755 });
-
-  console.log('\n=== 3. Creating deploy.tar.gz archive ===');
-  const tarPath = path.join(rootDir, 'dist', 'deploy.tar.gz');
-  // Use tar command
-  execSync(`tar -czf "${tarPath}" -C "${tempDir}" .`, { stdio: 'inherit' });
-  const stats = fs.statSync(tarPath);
-  console.log(`Archive created: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
-
-  console.log('\n=== 4. Uploading and Starting on AlwaysData via SSH ===');
+  console.log('\n=== Step 2: Connecting to AlwaysData via SSH ===');
   const conn = new Client();
-  
+
   conn.on('ready', () => {
-    console.log('SSH connected! Starting SFTP upload...');
+    console.log('SSH connected! Opening SFTP...');
     conn.sftp((err, sftp) => {
       if (err) throw err;
-      sftp.fastPut(tarPath, '/home/qistflow27/deploy.tar.gz', (err) => {
-        if (err) throw err;
-        console.log('Upload complete! Extracting & restarting on AlwaysData...');
 
-        const remoteCommands = [
-          'pkill -9 -f "worker.bundle.js" || true',
-          'mkdir -p /home/qistflow27/qistflow-worker',
-          'rm -rf /home/qistflow27/qistflow-worker/dist',
-          'tar -xzf /home/qistflow27/deploy.tar.gz -C /home/qistflow27/qistflow-worker --overwrite',
-          'chmod +x /home/qistflow27/qistflow-worker/start.sh',
-          'chmod +x /home/qistflow27/qistflow-worker/stop.sh',
-          'rm -f /home/qistflow27/deploy.tar.gz',
-          '/home/qistflow27/qistflow-worker/start.sh',
-          'sleep 2',
-          'ps aux | grep node',
-          'echo "--- WORKER LOG ---"',
-          'tail -n 25 /home/qistflow27/qistflow-worker/worker.log'
-        ].join('; ');
+      const remoteDir = '/home/qistflow27/qistflow-worker';
+      const remoteDist = remoteDir + '/dist';
 
-        conn.exec(remoteCommands, (err, stream) => {
-          if (err) throw err;
-          stream.on('close', (code) => {
-            console.log('\n=== Remote execution finished with code:', code);
-            conn.end();
-          }).on('data', (d) => process.stdout.write(d)).stderr.on('data', (d) => process.stderr.write(d));
+      // 1. Upload worker.bundle.js
+      console.log('Uploading worker.bundle.js...');
+      sftp.fastPut(bundlePath, remoteDist + '/worker.bundle.js', (upErr) => {
+        if (upErr) throw upErr;
+        console.log('worker.bundle.js uploaded successfully!');
+
+        // 2. Upload updated .env
+        const envPath = path.resolve(__dirname, '..', '.env');
+        console.log('Uploading .env...');
+        sftp.fastPut(envPath, remoteDir + '/.env', (envErr) => {
+          if (envErr) throw envErr;
+          console.log('.env uploaded successfully!');
+
+          // 3. Write start.sh with self-healing 24/7 daemon loop
+          const startSh = `#!/bin/bash
+cd /home/qistflow27/qistflow-worker
+pkill -f "run_daemon.sh" 2>/dev/null || true
+pkill -f "dist/worker.bundle.js" 2>/dev/null || true
+sleep 1
+export NODE_ENV=production
+export IS_WORKER=true
+
+cat << 'EOF' > run_daemon.sh
+#!/bin/bash
+while true; do
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting QistFlow Worker..." >> /home/qistflow27/qistflow-worker/worker.log
+  node dist/worker.bundle.js >> /home/qistflow27/qistflow-worker/worker.log 2>&1
+  EXIT_CODE=$?
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Worker exited (code $EXIT_CODE). Auto-restarting in 3s..." >> /home/qistflow27/qistflow-worker/worker.log
+  sleep 3
+done
+EOF
+chmod +x run_daemon.sh
+nohup ./run_daemon.sh > /dev/null 2>&1 &
+echo "24/7 Auto-Restarting Worker Daemon started!"
+`;
+
+          const startShStream = sftp.createWriteStream(remoteDir + '/start.sh');
+          startShStream.on('close', () => {
+            console.log('start.sh written!');
+
+            // 4. Launch remote worker daemon
+            console.log('\n=== Step 3: Launching 24/7 Worker Daemon on AlwaysData ===');
+            const remoteCmd = [
+              'chmod +x /home/qistflow27/qistflow-worker/start.sh',
+              '/home/qistflow27/qistflow-worker/start.sh',
+              'sleep 3',
+              'echo "=== PROCESS STATUS ==="',
+              'ps -u qistflow27 -f | grep -E "run_daemon|worker.bundle.js"',
+              'echo "=== WORKER LOG OUTPUT ==="',
+              'tail -n 25 /home/qistflow27/qistflow-worker/worker.log'
+            ].join(' && ');
+
+            conn.exec(remoteCmd, (execErr, stream) => {
+              if (execErr) throw execErr;
+              stream.on('close', (code) => {
+                console.log('\nDeployment finished with code:', code);
+                conn.end();
+              }).on('data', d => process.stdout.write(d)).stderr.on('data', d => process.stderr.write(d));
+            });
+          });
+          startShStream.write(startSh);
+          startShStream.end();
         });
       });
     });
@@ -153,4 +114,4 @@ echo "Worker stopped."
   });
 }
 
-main().catch(console.error);
+deploy().catch(console.error);

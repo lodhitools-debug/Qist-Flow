@@ -154,6 +154,7 @@ function SidebarContent({ isOpen, onClose }: SidebarProps) {
         { title: "Guarantor Escalation", href: "/settings?tab=ESCALATION" },
         { title: "Reminder Schedules", href: "/settings?tab=RULES" },
         { title: "Database Backups", href: "/settings?tab=BACKUP" },
+        { title: "Data Retention & Cleanup", href: "/settings?tab=RETENTION" },
       ],
     },
 
