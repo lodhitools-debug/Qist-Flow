@@ -159,8 +159,11 @@ export default function WhatsAppConnectionPage() {
         setPairingCode(data.pairingCode || null);
         setConnectedName(data.name || null);
         setConnectedAt(data.connectedAt || null);
-        setErrorMsg(data.errorMessage || null);
-        
+        if (data.status === "CONNECTED") {
+          setNotice(null);
+          setErrorMsg(null);
+        }
+
         // Notify Header to update immediately
         if (data.status !== statusRef.current) {
           window.dispatchEvent(new Event("wa_status_changed"));
@@ -282,8 +285,8 @@ export default function WhatsAppConnectionPage() {
       if (data?.pairingCode) {
         setPairingCode(data.pairingCode);
       }
-      fetchStatus();
     }
+    fetchStatus();
   };
 
   // ── Formatters ───────────────────────────────────────────────────────────────

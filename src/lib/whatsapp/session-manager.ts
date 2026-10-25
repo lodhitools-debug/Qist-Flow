@@ -444,7 +444,8 @@ export class UserWhatsAppSession {
   // ── Pairing code ──────────────────────────────────────────────────────────
 
   public async requestPairingCode(phoneNumber: string): Promise<string> {
-    if (this.isLoggedOut) throw new Error("Session is logged out. Please reconnect.");
+    this.isLoggedOut = false;
+    this.userRequestedDisconnect = false;
 
     let cleanPhone = phoneNumber.replace(/[^0-9]/g, "");
     if (cleanPhone.startsWith("03") && cleanPhone.length === 11) {
@@ -461,7 +462,6 @@ export class UserWhatsAppSession {
     this.pairingCode = null;
     this.qrCodeDataUrl = null;
     this.qrCodeString = null;
-    this.userRequestedDisconnect = false;
     await this.updateDbSession(true);
 
     // Destroy any old socket cleanly
@@ -716,6 +716,9 @@ class WhatsAppSessionManager {
   }
 
   public async requestPairingCode(userId: string, phone: string): Promise<string> {
+    if (this.sessions.has(userId) && this.sessions.get(userId)!.isIntentionallyLoggedOut()) {
+      this.sessions.delete(userId);
+    }
     const session = this.getSession(userId);
     return session.requestPairingCode(phone);
   }
