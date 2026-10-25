@@ -97,7 +97,7 @@ export function hasPermission(role: string, permission: string): boolean {
  * tenantId ensures Company A never sees Company B's data.
  */
 export function getUserCustomerScope(user: TokenPayload): Prisma.CustomerWhereInput {
-  const tenantFilter = { tenantId: user.tenantId };
+  const tenantFilter = user.tenantId ? { tenantId: user.tenantId } : {};
 
   if (user.role === "ADMIN") {
     return { ...tenantFilter }; // Full scope within tenant only
