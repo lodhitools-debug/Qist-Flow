@@ -33,12 +33,23 @@ export async function GET(req: NextRequest) {
       queueStats = { queued, sending, sentToday, failedToday };
     } catch {}
 
-    const token = process.env.WHATSAPP_CLOUD_ACCESS_TOKEN || "EAAZA8rZAVvxkABSkJZA30xX7Tf2LzUXISuvkWAZCQ6u6RoSnpCwgCGPGcZCZCErREoueVnxFp0OlGwBNpkXdYyaiXOkVLZCHzGEi1M0GYDn8ZBTqTvcDm2DeNzZAwaDKZBKzZAMAnxcYYDQeQsIbOnbkGfeukxvI4lxM3INPcD8lYk4c1Po2WYWpeHjj0TIPrM1nIYZChDlJveqvF9G0AjnbtndIju5WBA6o6ZBBTYhtMptZB0Wi4W1KhLQ12OJkEzgnZBJoz5gZAgT1k0ZC7CLilfKoKFcV78Ot6";
-    const phoneId = process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID || "1328348923692461";
-    
-    const hasCloudCreds = !!(token && phoneId);
-    const isConnected = hasCloudCreds || (dbSession?.status === "CONNECTED" && !!dbSession?.connectedPhone);
-    let computedStatus = isConnected ? "CONNECTED" : (dbSession?.status || "NOT_CONNECTED");
+    const providerType = (process.env.WHATSAPP_PROVIDER_TYPE || "WEB").toUpperCase();
+    const isCloudConfigured = providerType === "CLOUD" && !!(process.env.WHATSAPP_CLOUD_ACCESS_TOKEN && process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID);
+
+    let isConnected = false;
+    let computedStatus = dbSession?.status || "NOT_CONNECTED";
+    let phone: string | null = dbSession?.connectedPhone || null;
+    let name: string | null = dbSession?.connectedName || null;
+
+    if (isCloudConfigured) {
+      isConnected = true;
+      computedStatus = "CONNECTED";
+      phone = process.env.WHATSAPP_CLOUD_PHONE_NUMBER || "Cloud API";
+      name = "Meta Cloud API";
+    } else {
+      isConnected = dbSession?.status === "CONNECTED" && !!dbSession?.connectedPhone;
+      computedStatus = dbSession?.status || "NOT_CONNECTED";
+    }
 
     // Clear expired QR from DB
     let qrCode = dbSession?.qrCode || null;
@@ -58,8 +69,8 @@ export async function GET(req: NextRequest) {
         qrCode: isConnected ? null : qrCode,
         qrExpiresAt: dbSession?.qrExpiresAt || null,
         pairingCode: isConnected ? null : (dbSession?.pairingCode || null),
-        phone: hasCloudCreds ? "Cloud API" : (dbSession?.connectedPhone || null),
-        name: hasCloudCreds ? "Meta Business" : (dbSession?.connectedName || null),
+        phone,
+        name,
         connectedAt: dbSession?.connectedAt || null,
         lastDisconnectedAt: dbSession?.lastDisconnectedAt || null,
         errorMessage: dbSession?.errorMessage || null,
