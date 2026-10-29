@@ -148,7 +148,12 @@ export class RemoteWhatsAppProvider implements IWhatsAppProvider {
   async sendMessage(payload: WhatsAppMessagePayload): Promise<WhatsAppSendResult> {
     const data = await this.request("/api/wa/send", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        userId: payload.senderUserId || "default",
+        phone: payload.recipientPhone,
+        message: payload.messageText,
+        ...payload,
+      }),
     });
 
     return {

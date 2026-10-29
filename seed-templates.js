@@ -40,8 +40,9 @@ Qistbazar Recovery Officer
       language: "BILINGUAL",
       isActive: true,
       body: `URGENT RECOVERY NOTICE (GUARANTOR)
-Mohtaram {{customer_name}},
+Mohtaram {{guarantor_name}},
 Yeh paigham aap ko bataur Zamanat-daar (Guarantor) bhaija ja raha hai.
+Customer: {{customer_name}}
 Account: {{account}}
 Pending Amount: Rs. {{balance}}
 
@@ -50,12 +51,53 @@ Qistbazar Recovery Officer
 {{recovery_person}}
 -------------------------
 فوری ریکوری نوٹس برائے ضامن
-محترم {{customer_name}}،
+محترم {{guarantor_name}}،
 یہ پیغام آپ کو بطور ضمانت دار (Guarantor) بھیجا جا رہا ہے۔
+کسٹمر: {{customer_name}}
 اکاؤنٹ: {{account}}
 بقایا رقم: Rs. {{balance}}
 
 براہِ کرم کسٹمر سے رابطہ کر کے انہیں ان کی بقایا قسط ادا کرنے کی یاد دہانی کروائیں۔
+Qistbazar Recovery Officer
+{{recovery_person}}`
+    },
+    {
+      name: "Guarantor Level 2 Follow-Up Notice (Bilingual)",
+      slug: "guarantor-followup-bilingual",
+      type: "GUARANTOR_FOLLOWUP",
+      language: "BILINGUAL",
+      isActive: true,
+      body: `URGENT FOLLOW-UP — GUARANTOR
+Assalam-o-Alaikum {{guarantor_name}},
+Customer {{customer_name}} (Account: {{account}}) ki overdue qist Rs. {{balance}} abhi tak ada nahi hui.
+Bataur Zamin, barah-e-karam foran customer se rabta kar ke baqaya qist ki adaigi clear karwayein.
+Qistbazar Recovery Officer
+{{recovery_person}}
+-------------------------
+دوسرا نوٹس برائے ضامن
+السلام علیکم {{guarantor_name}}،
+کسٹمر {{customer_name}} (اکاؤنٹ نمبر: {{account}}) کی واجب الادا قسط Rs. {{balance}} ابھی تک ادا نہیں ہوئی۔
+بطور ضامن، براہِ کرم فوری طور پر کسٹمر سے رابطہ کرکے ادائیگی کلیئر کروائیں۔
+Qistbazar Recovery Officer
+{{recovery_person}}`
+    },
+    {
+      name: "Guarantor Level 3 Final Notice (Bilingual)",
+      slug: "guarantor-final-notice-bilingual",
+      type: "GUARANTOR_FINAL_NOTICE",
+      language: "BILINGUAL",
+      isActive: true,
+      body: `FINAL LEGAL NOTICE — GUARANTOR
+Mohtaram {{guarantor_name}},
+Customer {{customer_name}} (Account: {{account}}) ki qist mutadad notices ke bawajood ada nahi hui.
+Bataur Guarantor aap par bhi yeh zimmedari aaid hoti hai. Barah-e-karam foran payment clear karwayein warna company policy ke mutabiq legal action initialize kiya ja sakta hai.
+Qistbazar Recovery Officer
+{{recovery_person}}
+-------------------------
+حتمی قانونی نوٹس برائے ضامن
+محترم {{guarantor_name}}،
+کسٹمر {{customer_name}} (اکاؤنٹ نمبر: {{account}}) کی قسط متعدد نوٹسز کے باوجود ادا نہیں ہوئی۔
+بطور ضامن آپ پر بھی یہ قانونی ذمہ داری عائد ہوتی ہے۔ براہِ کرم فوری ادائیگی یقینی بنائیں ورنہ قانونی کارروائی عمل میں لائی جا سکتی ہے۔
 Qistbazar Recovery Officer
 {{recovery_person}}`
     }
@@ -63,9 +105,20 @@ Qistbazar Recovery Officer
 
   for (const t of templates) {
     await prisma.messageTemplate.upsert({
-      where: { slug: t.slug },
-      update: t,
-      create: t,
+      where: {
+        slug_tenantId: {
+          slug: t.slug,
+          tenantId: "default",
+        },
+      },
+      update: {
+        ...t,
+        tenantId: "default",
+      },
+      create: {
+        ...t,
+        tenantId: "default",
+      },
     });
     console.log(`Upserted template: ${t.name}`);
   }

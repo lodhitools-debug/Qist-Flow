@@ -56,17 +56,25 @@ export function renderTemplate(templateString: string, context: TemplateContext)
 
   const replacements: Record<string, string> = {
     "{{guarantor_name}}": context.guarantorName || "Guarantor Sahab",
+    "{{guarantorName}}": context.guarantorName || "Guarantor Sahab",
     "{{customer_name}}": context.customerName || "Customer",
+    "{{customerName}}": context.customerName || "Customer",
     "{{account}}": context.account || "",
     "{{emi}}": formatCurrency(context.emi),
     "{{balance}}": formatCurrency(context.balance),
     "{{due_date}}": dueDateStr,
+    "{{dueDate}}": dueDateStr,
     "{{days_overdue}}": String(context.daysOverdue || 0),
+    "{{daysOverdue}}": String(context.daysOverdue || 0),
     "{{months_overdue}}": String(context.monthsOverdue || 0),
+    "{{monthsOverdue}}": String(context.monthsOverdue || 0),
     "{{branch}}": context.branch || "QistBazar",
     "{{recovery_person}}": context.recoveryPerson || "Recovery Department",
+    "{{recoveryPerson}}": context.recoveryPerson || "Recovery Department",
     "{{last_payment_amount}}": formatCurrency(context.lastPaymentAmount),
+    "{{lastPaymentAmount}}": formatCurrency(context.lastPaymentAmount),
     "{{product_name}}": context.productName || "Installment Product",
+    "{{productName}}": context.productName || "Installment Product",
   };
 
   let rendered = templateString;
@@ -159,5 +167,39 @@ Ghulam Ahmad Razzaqi
 
 Qistbazar Recovery Officer:
 Ghulam Ahmad Razzaqi`,
+  },
+  {
+    slug: "guarantor-followup-notice",
+    name: "Guarantor Level 2 Follow-Up Notice",
+    type: "GUARANTOR_FOLLOWUP",
+    language: "URDU_AND_ROMAN",
+    body: `URGENT FOLLOW-UP — GUARANTOR
+Assalam-o-Alaikum {{guarantor_name}},
+Customer {{customer_name}} (Account: {{account}}) ki overdue qist Rs. {{balance}} abhi tak ada nahi hui.
+Bataur Zamin, barah-e-karam foran customer se rabta kar ke baqaya qist ki adaigi clear karwayein.
+Qistbazar Recovery Team
+-------------------------
+دوسرا نوٹس برائے ضامن
+السلام علیکم {{guarantor_name}}،
+کسٹمر {{customer_name}} (اکاؤنٹ نمبر: {{account}}) کی واجب الادا قسط Rs. {{balance}} ابھی تک ادا نہیں ہوئی۔
+بطور ضامن، براہِ کرم فوری طور پر کسٹمر سے رابطہ کرکے ادائیگی کلیئر کروائیں۔
+Qistbazar Recovery Team`,
+  },
+  {
+    slug: "guarantor-final-notice",
+    name: "Guarantor Level 3 Final Legal Notice",
+    type: "GUARANTOR_FINAL_NOTICE",
+    language: "URDU_AND_ROMAN",
+    body: `FINAL LEGAL NOTICE — GUARANTOR
+Mohtaram {{guarantor_name}},
+Customer {{customer_name}} (Account: {{account}}) ki qist mutadad notices ke bawajood ada nahi hui.
+Bataur Guarantor aap par bhi yeh zimmedari aaid hoti hai. Barah-e-karam foran payment clear karwayein warna company policy ke mutabiq legal action initialize kiya ja sakta hai.
+Qistbazar Recovery Team
+-------------------------
+حتمی قانونی نوٹس برائے ضامن
+محترم {{guarantor_name}}،
+کسٹمر {{customer_name}} (اکاؤنٹ نمبر: {{account}}) کی قسط متعدد نوٹسز کے باوجود ادا نہیں ہوئی۔
+بطور ضامن آپ پر بھی یہ قانونی ذمہ داری عائد ہوتی ہے۔ براہِ کرم فوری ادائیگی یقینی بنائیں ورنہ کمپنی پالیسی اور قوانین کے مطابق قانونی کارروائی عمل میں لائی جا سکتی ہے۔
+Qistbazar Recovery Team`,
   }
 ];

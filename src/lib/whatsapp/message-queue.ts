@@ -50,6 +50,12 @@ export async function enqueueMessage(params: EnqueueMessageParams): Promise<Enqu
     return { success: false, error: "Invalid recipient phone number" };
   }
 
+  // Strict Anti-Ban Guard: Never enqueue empty or whitespace-only messages
+  const trimmedText = typeof params.messageText === "string" ? params.messageText.trim() : "";
+  if (!trimmedText) {
+    return { success: false, error: "Message text cannot be empty" };
+  }
+
   const recipientType = params.recipientType || "CUSTOMER";
 
   let senderUserId = params.senderUserId;
@@ -185,7 +191,7 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
   sent: number;
   failed: number;
 }> {
-  // Auto-recover any stale SENDING messages older than 5 minutes
+  // Auto-recover any stale SENDING messages older than 5 minutes, and purge any empty messages
   try {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     await prisma.messageQueue.updateMany({
@@ -197,6 +203,33 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
         status: "QUEUED",
       },
     });
+
+    // Auto-cancel empty messages to stop bot-flagging
+    await prisma.messageQueue.updateMany({
+      where: {
+        status: "QUEUED",
+        messageText: "",
+      },
+      data: {
+        status: "CANCELLED",
+        errorMessage: "Cancelled by Anti-Ban Safeguard: Empty message body",
+      },
+    });
+  } catch {}
+
+  // Daily anti-ban safety limit check (prevents runaway blasting)
+  try {
+    const todaySent = await prisma.messageLog.count({
+      where: {
+        status: "SENT",
+        sentAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+      },
+    });
+    const maxDaily = parseInt(process.env.WHATSAPP_DAILY_MAX_MESSAGES || "100", 10);
+    if (todaySent >= maxDaily) {
+      console.warn(`🛑 [Queue Worker] Daily safety cap reached (${todaySent}/${maxDaily}). Dispatch paused to protect WhatsApp account from ban.`);
+      return { processed: 0, sent: 0, failed: 0 };
+    }
   } catch {}
 
   // Get pending items ordered by priority DESC (manual priority 100 first, then guarantor 50, then reminders), then createdAt ASC
@@ -221,10 +254,26 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
   let sentCount = 0;
   let failedCount = 0;
 
-  const minDelay = parseInt(process.env.WHATSAPP_RATE_LIMIT_MIN_DELAY_MS || "2000", 10);
-  const maxDelay = parseInt(process.env.WHATSAPP_RATE_LIMIT_MAX_DELAY_MS || "6000", 10);
+  // Anti-Ban Rate Limit Delays (Minimum 8s-18s between automatic messages)
+  const minDelay = Math.max(8000, parseInt(process.env.WHATSAPP_RATE_LIMIT_MIN_DELAY_MS || "8000", 10));
+  const maxDelay = Math.max(minDelay + 3000, parseInt(process.env.WHATSAPP_RATE_LIMIT_MAX_DELAY_MS || "18000", 10));
 
   for (const item of pendingItems) {
+    // Strict Anti-Ban Guard: Refuse empty messages
+    const trimmedText = typeof item.messageText === "string" ? item.messageText.trim() : "";
+    if (!trimmedText) {
+      console.warn(`⚠️ [Queue Worker] Rejecting queue item ${item.id} with empty message text.`);
+      await prisma.messageQueue.update({
+        where: { id: item.id },
+        data: {
+          status: "FAILED",
+          errorMessage: "Cancelled by Anti-Ban Guard: Message text cannot be empty",
+        },
+      });
+      failedCount++;
+      continue;
+    }
+
     // Determine the WhatsApp provider for this Tenant
     let tenant: any = null;
     try {
@@ -312,13 +361,14 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
       });
 
       const isManualHighPriority = item.priority >= 100;
+      // Anti-Ban Delay: Even high priority manual sends get a safe 2-4s delay, while bulk queue gets full jitter
       const delayMs = isManualHighPriority
-        ? 800
+        ? Math.floor(Math.random() * 2000) + 2500
         : Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
 
       await new Promise((resolve) => setTimeout(resolve, delayMs));
 
-      sendResult = await session.sendDirectMessage(item.recipientPhone, item.messageText);
+      sendResult = await session.sendDirectMessage(item.recipientPhone, trimmedText);
     }
 
     if (sendResult.success) {

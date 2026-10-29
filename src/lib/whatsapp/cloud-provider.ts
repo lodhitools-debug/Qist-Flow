@@ -50,7 +50,21 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
     }
 
     try {
-      const cleanPhone = payload.recipientPhone.replace(/[^0-9]/g, "");
+      let cleanPhone = payload.recipientPhone.replace(/[^0-9]/g, "");
+      if (cleanPhone.startsWith("03") && cleanPhone.length === 11) {
+        cleanPhone = "92" + cleanPhone.substring(1);
+      } else if (cleanPhone.startsWith("3") && cleanPhone.length === 10) {
+        cleanPhone = "92" + cleanPhone;
+      }
+
+      const trimmedText = typeof payload.messageText === "string" ? payload.messageText.trim() : "";
+      if (!trimmedText && !(payload as any).templateName) {
+        return {
+          success: false,
+          error: "Message text cannot be empty",
+          timestamp: new Date(),
+        };
+      }
       
       let reqBody: any = {
         messaging_product: "whatsapp",
@@ -67,23 +81,35 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
         };
       } else {
         reqBody.type = "text";
-        reqBody.text = { preview_url: false, body: payload.messageText };
+        reqBody.text = { preview_url: false, body: trimmedText };
       }
 
-      const res = await fetch(
-        `https://graph.facebook.com/v19.0/${this.phoneNumberId}/messages`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(reqBody),
-        }
-      );
+      const sendToApi = async (id: string) => {
+        const res = await fetch(
+          `https://graph.facebook.com/v20.0/${id}/messages`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${this.accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(reqBody),
+          }
+        );
+        return await res.json();
+      };
 
-      const data = await res.json();
-      if (!res.ok) {
+      let data = await sendToApi(this.phoneNumberId);
+      const fallbackId = process.env.WHATSAPP_CLOUD_FALLBACK_PHONE_NUMBER_ID || "1328348923692461";
+      if (data?.error && fallbackId && fallbackId !== this.phoneNumberId) {
+        console.warn(`[CloudProvider] Primary phone ${this.phoneNumberId} error: ${data.error.message}. Trying fallback phone ${fallbackId}...`);
+        const fallbackData = await sendToApi(fallbackId);
+        if (fallbackData?.messages?.[0]?.id) {
+          data = fallbackData;
+        }
+      }
+
+      if (data?.error) {
         return {
           success: false,
           error: data.error?.message || "Cloud API Error",

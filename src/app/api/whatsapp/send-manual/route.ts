@@ -18,14 +18,15 @@ export async function POST(req: NextRequest) {
     const recipientName = body.recipientName;
     const recipientType = body.recipientType || "CUSTOMER";
     const guarantorId = body.guarantorId || (recipientType !== "CUSTOMER" ? recipientType : undefined);
-    const messageText = body.messageText || body.message;
+    const rawMessage = body.messageText || body.message;
+    const messageText = typeof rawMessage === "string" ? rawMessage.trim() : "";
     const installmentId = body.installmentId;
     const messageType = body.messageType || (recipientType !== "CUSTOMER" ? "GUARANTOR_FIRST_NOTICE" : "MANUAL");
     const escalationLevel = Number(body.escalationLevel) || (recipientType !== "CUSTOMER" ? 1 : 0);
 
     if (!recipientPhone || !messageText) {
       return NextResponse.json(
-        { success: false, error: "Recipient phone and message text are required" },
+        { success: false, error: "Recipient phone and non-empty message text are required" },
         { status: 400 }
       );
     }

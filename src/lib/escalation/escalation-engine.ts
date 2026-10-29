@@ -26,7 +26,55 @@ export const DEFAULT_ESCALATION_CONFIG: GuarantorEscalationConfig = {
   maxMessagesPerDay: 50,
   onlyAfterCustomerFailure: false,
   onlyAfterOverdue: true,
-  requireManagerApproval: false,
+  requireManagerApproval: true, // Default to true to prevent unapproved bulk automated messaging
+};
+
+export const DEFAULT_GUARANTOR_TEMPLATES: Record<string, string> = {
+  GUARANTOR_FIRST_NOTICE: `URGENT RECOVERY NOTICE (GUARANTOR)
+Mohtaram {{guarantorName}},
+Yeh paigham aap ko bataur Zamanat-daar (Guarantor) bhaija ja raha hai.
+Customer: {{customerName}}
+Account: {{account}}
+Product: {{productName}}
+Pending Amount: Rs. {{balance}}
+
+Barah-e-karam customer se rabta kar ke unhein un ki pending qist ada karne ki yad-dihani karwayein.
+Qistbazar Recovery Team
+-------------------------
+فوری ریکوری نوٹس برائے ضامن
+محترم {{guarantorName}}،
+یہ پیغام آپ کو بطور ضمانت دار (Guarantor) بھیجا جا رہا ہے۔
+کسٹمر: {{customerName}}
+اکاؤنٹ: {{account}}
+پروڈکٹ: {{productName}}
+بقایا رقم: Rs. {{balance}}
+
+براہِ کرم کسٹمر سے رابطہ کر کے انہیں ان کی بقایا قسط ادا کرنے کی یاد دہانی کروائیں۔
+Qistbazar Recovery Team`,
+
+  GUARANTOR_FOLLOWUP: `SECOND NOTICE (GUARANTOR)
+Mohtaram {{guarantorName}},
+Customer {{customerName}} (Account: {{account}}) ki overdue qist Rs. {{balance}} abhi tak ada nahi hui.
+Barah-e-karam foran customer se rabta karke payment clear karwayein taake legal escalation se bacha ja sake.
+Qistbazar Recovery Team
+-------------------------
+دوسرا نوٹس برائے ضامن
+محترم {{guarantorName}}،
+کسٹمر {{customerName}} (اکاؤنٹ: {{account}}) کی واجب الادا قسط Rs. {{balance}} ابھی تک ادا نہیں ہوئی۔
+براہِ کرم فوری طور پر کسٹمر سے رابطہ کرکے ادائیگی کلیئر کروائیں تاکہ قانونی کارروائی سے بچا جا سکے۔
+Qistbazar Recovery Team`,
+
+  GUARANTOR_FINAL_NOTICE: `FINAL LEGAL NOTICE (GUARANTOR)
+Mohtaram {{guarantorName}},
+Customer {{customerName}} (Account: {{account}}) ki qist mutadad notices ke bawajood ada nahi hui.
+Bataur Guarantor aap par bhi yeh zimmedari aaid hoti hai. Barah-e-karam 24 ghante ke andar payment karwayein warna company policy ke mutabiq legal action initialize kiya ja sakta hai.
+Qistbazar Recovery Team
+-------------------------
+حتمی قانونی نوٹس برائے ضامن
+محترم {{guarantorName}}،
+کسٹمر {{customerName}} (اکاؤنٹ: {{account}}) کی قسط متعدد نوٹسز کے باوجود ادا نہیں ہوئی۔
+بطور ضامن آپ پر بھی یہ ذمہ داری عائد ہوتی ہے۔ براہِ کرم 24 گھنٹے کے اندر ادائیگی کروائیں ورنہ قانونی کارروائی شروع کی جا سکتی ہے۔
+Qistbazar Recovery Team`,
 };
 
 /**
@@ -274,7 +322,12 @@ export async function runGuarantorEscalationScheduler(): Promise<{
     }
 
     // Render Template (Privacy Safe: No CNIC, No full address)
-    const messageText = renderTemplate(selectedTemplate?.body || "", {
+    const rawTemplateBody =
+      selectedTemplate?.body ||
+      DEFAULT_GUARANTOR_TEMPLATES[messageType] ||
+      DEFAULT_GUARANTOR_TEMPLATES.GUARANTOR_FIRST_NOTICE;
+
+    const messageText = renderTemplate(rawTemplateBody, {
       guarantorName: guarantorContact.name,
       customerName: customer.customerName,
       account: customer.account,
@@ -286,6 +339,13 @@ export async function runGuarantorEscalationScheduler(): Promise<{
       recoveryPerson: customer.recoveryPerson || "QistFlow Team",
       productName: customer.productName || "Installment Product",
     });
+
+    // Hard Guard: Never queue empty or blank message
+    if (!messageText || !messageText.trim()) {
+      console.warn(`⚠️ [Escalation] Rendered message for customer ${customer.id} is empty. Skipping queue.`);
+      skippedCount++;
+      continue;
+    }
 
     const isPendingApproval = config.requireManagerApproval;
 

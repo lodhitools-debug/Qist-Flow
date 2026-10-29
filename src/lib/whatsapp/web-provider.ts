@@ -333,6 +333,16 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
       };
     }
 
+    const trimmedText = typeof payload.messageText === "string" ? payload.messageText.trim() : "";
+    if (!trimmedText) {
+      console.warn(`⚠️ [Legacy WebProvider] Refusing to send empty WhatsApp message`);
+      return {
+        success: false,
+        error: "Message text cannot be empty or blank",
+        timestamp: new Date(),
+      };
+    }
+
     try {
       let cleanPhone = payload.recipientPhone.replace(/[^0-9]/g, "");
       if (cleanPhone.startsWith("03") && cleanPhone.length === 11) {
@@ -342,8 +352,17 @@ class WhatsAppWebProvider implements IWhatsAppProvider {
       }
       const jid = `${cleanPhone}@s.whatsapp.net`;
 
+      // Human presence & typing simulation
+      try {
+        await this.sock.sendPresenceUpdate("available").catch(() => {});
+        await this.sock.sendPresenceUpdate("composing", jid).catch(() => {});
+        const typingDelay = Math.min(5000, Math.max(2000, Math.floor(trimmedText.length * 15) + Math.floor(Math.random() * 1500)));
+        await new Promise((resolve) => setTimeout(resolve, typingDelay));
+        await this.sock.sendPresenceUpdate("paused", jid).catch(() => {});
+      } catch {}
+
       const result = await this.sock.sendMessage(jid, {
-        text: payload.messageText,
+        text: trimmedText,
       });
 
       this.lastActiveAt = new Date();

@@ -53,7 +53,8 @@ async function runQueueStep() {
       lastSuccessfulMessageAt = new Date();
       console.log(`[Queue] Processed: ${res.processed} | Sent: ${res.sent} | Failed: ${res.failed}`);
     }
-    setTimeout(runQueueStep, res.processed > 0 ? 1_000 : 8_000);
+    // Anti-Ban Breather: Always wait at least 12-15 seconds between queue steps
+    setTimeout(runQueueStep, res.processed > 0 ? 12_000 : 15_000);
   } catch (err) {
     console.error("[Queue Error]:", err);
     setTimeout(runQueueStep, 8_000);
@@ -311,13 +312,17 @@ async function startWorker() {
     // POST /api/wa/send
     if (req.method === "POST" && pathname === "/api/wa/send") {
       try {
-        const { userId, phone, message } = await readBody(req);
-        if (!userId || !phone || !message) {
-          return jsonRes(res, 400, { success: false, error: "userId, phone and message required" });
+        const body = await readBody(req);
+        const userId = body.userId || body.senderUserId;
+        const phone = body.phone || body.recipientPhone;
+        const message = body.message || body.messageText;
+
+        if (!userId || !phone || !message || !String(message).trim()) {
+          return jsonRes(res, 400, { success: false, error: "userId, phone and non-empty message required" });
         }
         const result = await waSessionManager.sendMessage(userId, {
           recipientPhone: phone,
-          messageText: message,
+          messageText: String(message).trim(),
         });
         return jsonRes(res, 200, result);
       } catch (err: any) {

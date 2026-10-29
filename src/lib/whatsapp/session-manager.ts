@@ -563,6 +563,17 @@ export class UserWhatsAppSession {
       };
     }
 
+    // Strict Anti-Spam / Anti-Ban Guard: Refuse to send empty messages
+    const trimmedText = typeof messageText === "string" ? messageText.trim() : "";
+    if (!trimmedText) {
+      console.warn(`⚠️ [User ${this.userId}] Refusing to send empty WhatsApp message to ${recipientPhone}`);
+      return {
+        success: false,
+        error: "Message text cannot be empty or blank",
+        timestamp: new Date(),
+      };
+    }
+
     const cleanPhone = recipientPhone.replace(/[^0-9]/g, "");
     if (!cleanPhone || cleanPhone.length < 10) {
       return { success: false, error: `Invalid phone: "${recipientPhone}"`, timestamp: new Date() };
@@ -578,8 +589,19 @@ export class UserWhatsAppSession {
           timestamp: new Date(),
         };
       }
+
+      // Human Presence & Typing Simulation (Critical Anti-Ban Safeguard)
+      try {
+        await this.sock.sendPresenceUpdate("available").catch(() => {});
+        await this.sock.sendPresenceUpdate("composing", jid).catch(() => {});
+        // Simulate human typing speed (2-5s) based on text length with random jitter
+        const typingDelay = Math.min(5000, Math.max(2000, Math.floor(trimmedText.length * 15) + Math.floor(Math.random() * 1500)));
+        await new Promise((resolve) => setTimeout(resolve, typingDelay));
+        await this.sock.sendPresenceUpdate("paused", jid).catch(() => {});
+      } catch {}
+
       // Wait for confirmation from WhatsApp server with a 15-second strict timeout
-      const sendPromise = this.sock.sendMessage(jid, { text: messageText });
+      const sendPromise = this.sock.sendMessage(jid, { text: trimmedText });
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error("Send timeout (WhatsApp server unresponsive)")), 15000)
       );
