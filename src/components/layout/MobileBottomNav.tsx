@@ -166,7 +166,7 @@ export default function MobileBottomNav() {
               </Link>
 
               <Link
-                href="/recovery/send-reminders"
+                href="/recovery/customer-reminders"
                 className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-200 hover:bg-slate-700"
               >
                 <Send className="w-4 h-4 text-teal-400" />

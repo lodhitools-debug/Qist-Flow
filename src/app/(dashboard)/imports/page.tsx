@@ -1685,7 +1685,7 @@ export default function ExcelImportPage() {
               View Customers Directory
             </Link>
             <Link
-              href="/recovery/send-reminders"
+              href="/recovery/customer-reminders"
               className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 text-white text-xs font-bold border border-slate-700"
             >
               Dispatch Reminders

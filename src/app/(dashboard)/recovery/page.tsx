@@ -113,7 +113,7 @@ export default function RecoveryWorkspacePage() {
           )}
 
           <Link
-            href={`/recovery/send-reminders?filter=${activeTab}`}
+            href={`/recovery/customer-reminders?filter=${activeTab}`}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-bold shadow-md shadow-emerald-500/20 transition-all min-h-[40px]"
           >
             <Send className="w-3.5 h-3.5" />

@@ -96,7 +96,7 @@ export default function DashboardPage() {
           </Link>
 
           <Link
-            href="/recovery/send-reminders"
+            href="/recovery/customer-reminders"
             className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-bold transition-all hover:scale-105 shadow-lg shadow-emerald-500/20 min-h-[44px]"
           >
             <Send className="w-4 h-4" />
@@ -310,7 +310,7 @@ export default function DashboardPage() {
               <p className="text-[11px] text-slate-400">Installments scheduled for payment today</p>
             </div>
             <Link
-              href="/recovery/send-reminders?filter=DUE_TODAY"
+              href="/recovery/customer-reminders?filter=DUE_TODAY"
               className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
             >
               Send Reminders →
@@ -362,7 +362,7 @@ export default function DashboardPage() {
               <p className="text-[11px] text-slate-400">Accounts with pending balances requiring follow-up</p>
             </div>
             <Link
-              href="/recovery/send-reminders?filter=ALL_OVERDUE"
+              href="/recovery/customer-reminders?filter=ALL_OVERDUE"
               className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline"
             >
               Send Notices →
