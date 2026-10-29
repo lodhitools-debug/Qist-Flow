@@ -287,7 +287,7 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
 
     const providerType = (process.env.WHATSAPP_PROVIDER_TYPE || "WEB").toUpperCase();
     const hasTenantCloudCreds = !!(tenant?.waApiToken && tenant?.waPhoneNumberId);
-    const useCloud = providerType === "CLOUD" || hasTenantCloudCreds;
+    const useCloud = providerType === "CLOUD" && hasTenantCloudCreds;
 
     if (useCloud) {
       // 1. Use Cloud API (WhatsApp Business) if configured
@@ -340,18 +340,24 @@ export async function processQueueWorker(maxBatchSize: number = 10, forceProcess
         senderId = cust?.assignedToUserId || cust?.assignedManagerId || null;
       }
 
-      if (!senderId) {
-        const adminSession = await prisma.whatsAppSession.findFirst({
-          where: { status: "CONNECTED" },
+      let session = senderId ? waSessionManager.getSession(senderId) : null;
+
+      // If assigned officer's WhatsApp is not connected, fall back to any active admin / connected phone
+      if (!session || !session.isConnected()) {
+        const activeSession = await prisma.whatsAppSession.findFirst({
+          where: { status: "CONNECTED", connectedPhone: { not: null } },
           select: { userId: true },
         });
-        senderId = adminSession?.userId || null;
+        if (activeSession?.userId) {
+          senderId = activeSession.userId;
+          session = waSessionManager.getSession(senderId);
+        }
       }
 
-      if (!senderId) continue;
-
-      const session = waSessionManager.getSession(senderId);
-      if (!session.isConnected()) continue;
+      if (!session || !session.isConnected()) {
+        // WhatsApp is currently offline / not connected — leave in QUEUED so it auto-dispatches once phone links
+        continue;
+      }
 
       usedSenderId = senderId;
 

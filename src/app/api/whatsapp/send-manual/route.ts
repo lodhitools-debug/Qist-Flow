@@ -123,8 +123,18 @@ export async function POST(req: NextRequest) {
       },
     }).catch(() => {});
 
-    // Process immediately via Vercel if not pending approval
+    // Process immediately via worker if not pending approval
     if (approvalStatus !== "PENDING_APPROVAL") {
+      const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
+      if (serviceUrl) {
+        fetch(`${serviceUrl}/api/wa/process-queue`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "cc6c5a96c0f8f1b73e9635c431e72327171db73d17d589ed8aaa2039fcd5017a",
+          },
+        }).catch(() => {});
+      }
       const { processQueueWorker } = await import("@/lib/whatsapp/message-queue");
       processQueueWorker(1, true).catch(err => console.error("Vercel Queue Worker Error:", err));
     }

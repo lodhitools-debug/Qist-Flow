@@ -392,6 +392,12 @@ async function startWorker() {
       }
     }
 
+    // POST /api/wa/process-queue
+    if (req.method === "POST" && pathname === "/api/wa/process-queue") {
+      runQueueStep();
+      return jsonRes(res, 200, { success: true, message: "Queue processing triggered" });
+    }
+
     jsonRes(res, 404, { error: "Endpoint not found" });
   });
 

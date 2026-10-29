@@ -33,23 +33,10 @@ export async function GET(req: NextRequest) {
       queueStats = { queued, sending, sentToday, failedToday };
     } catch {}
 
-    const providerType = (process.env.WHATSAPP_PROVIDER_TYPE || "WEB").toUpperCase();
-    const isCloudConfigured = providerType === "CLOUD" && !!(process.env.WHATSAPP_CLOUD_ACCESS_TOKEN && process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID);
-
-    let isConnected = false;
+    const isConnected = dbSession?.status === "CONNECTED" && !!dbSession?.connectedPhone;
     let computedStatus = dbSession?.status || "NOT_CONNECTED";
-    let phone: string | null = dbSession?.connectedPhone || null;
-    let name: string | null = dbSession?.connectedName || null;
-
-    if (isCloudConfigured) {
-      isConnected = true;
-      computedStatus = "CONNECTED";
-      phone = process.env.WHATSAPP_CLOUD_PHONE_NUMBER || "Cloud API";
-      name = "Meta Cloud API";
-    } else {
-      isConnected = dbSession?.status === "CONNECTED" && !!dbSession?.connectedPhone;
-      computedStatus = dbSession?.status || "NOT_CONNECTED";
-    }
+    const phone: string | null = isConnected ? dbSession?.connectedPhone || null : null;
+    const name: string | null = isConnected ? dbSession?.connectedName || null : null;
 
     // Clear expired QR from DB
     let qrCode = dbSession?.qrCode || null;

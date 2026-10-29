@@ -62,6 +62,18 @@ export async function POST(req: NextRequest) {
         where: { status: "QUEUED", tenantId: session.tenantId },
         data: { scheduledFor: new Date() },
       });
+
+      // Notify AlwaysData worker to process immediately
+      const serviceUrl = (process.env.WHATSAPP_SERVICE_URL || "").replace(/\/$/, "");
+      if (serviceUrl) {
+        fetch(`${serviceUrl}/api/wa/process-queue`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-whatsapp-secret": process.env.WHATSAPP_SERVICE_SECRET || "cc6c5a96c0f8f1b73e9635c431e72327171db73d17d589ed8aaa2039fcd5017a",
+          },
+        }).catch(() => {});
+      }
       
       // Actually trigger the worker so messages get sent
       processQueueWorker(50, true).catch(err => console.error("Manual process worker error:", err));

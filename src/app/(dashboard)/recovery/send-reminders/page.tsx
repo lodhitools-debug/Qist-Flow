@@ -8,3 +8,4 @@ export default function SendRemindersPage({
   const filter = searchParams?.filter ? `?filter=${searchParams.filter}` : "";
   redirect(`/recovery/customer-reminders${filter}`);
 }
+
