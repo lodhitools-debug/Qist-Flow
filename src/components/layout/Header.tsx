@@ -64,10 +64,14 @@ export default function Header({ onToggleMobileMenu }: HeaderProps) {
   useEffect(() => {
     fetchSession();
     fetchWAStatus();
-    // Poll every 30s — the connection page handles real-time updates
-    const interval = setInterval(fetchWAStatus, 30_000);
+    // Poll every 10s for fast live updates across tabs
+    const interval = setInterval(fetchWAStatus, 10_000);
     
-    const onStatusChange = () => fetchWAStatus();
+    const onStatusChange = () => {
+      fetchWAStatus();
+      setTimeout(fetchWAStatus, 1_000);
+      setTimeout(fetchWAStatus, 3_000);
+    };
     window.addEventListener("wa_status_changed", onStatusChange);
     
     return () => {

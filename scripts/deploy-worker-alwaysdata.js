@@ -53,56 +53,26 @@ async function deploy() {
           if (envErr) throw envErr;
           console.log('.env uploaded successfully!');
 
-          // 3. Write start.sh with self-healing 24/7 daemon loop
-          const startSh = `#!/bin/bash
-cd /home/qistflow27/qistflow-worker
-pkill -f "run_daemon.sh" 2>/dev/null || true
-pkill -f "dist/worker.bundle.js" 2>/dev/null || true
-sleep 1
-export NODE_ENV=production
-export IS_WORKER=true
+          // 3. Restart AlwaysData worker process cleanly (killing any duplicate processes)
+          console.log('\n=== Step 3: Restarting AlwaysData site upstream cleanly ===');
+          const remoteCmd = [
+            'pkill -9 -f run_daemon 2>/dev/null || true',
+            'rm -f /home/qistflow27/qistflow-worker/run_daemon.sh',
+            'sleep 1',
+            'echo "=== PROCESS STATUS ==="',
+            'ps -u qistflow27 -f | grep node || true',
+            'echo "Triggering AlwaysData site reload via curl..."',
+            'curl -s https://qistflow27.alwaysdata.net/api/health || true',
+            'echo "\n=== HEALTH CHECK COMPLETED ==="'
+          ].join(' && ');
 
-cat << 'EOF' > run_daemon.sh
-#!/bin/bash
-while true; do
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting QistFlow Worker..." >> /home/qistflow27/qistflow-worker/worker.log
-  node dist/worker.bundle.js >> /home/qistflow27/qistflow-worker/worker.log 2>&1
-  EXIT_CODE=$?
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Worker exited (code $EXIT_CODE). Auto-restarting in 3s..." >> /home/qistflow27/qistflow-worker/worker.log
-  sleep 3
-done
-EOF
-chmod +x run_daemon.sh
-nohup ./run_daemon.sh > /dev/null 2>&1 &
-echo "24/7 Auto-Restarting Worker Daemon started!"
-`;
-
-          const startShStream = sftp.createWriteStream(remoteDir + '/start.sh');
-          startShStream.on('close', () => {
-            console.log('start.sh written!');
-
-            // 4. Launch remote worker daemon
-            console.log('\n=== Step 3: Launching 24/7 Worker Daemon on AlwaysData ===');
-            const remoteCmd = [
-              'chmod +x /home/qistflow27/qistflow-worker/start.sh',
-              '/home/qistflow27/qistflow-worker/start.sh',
-              'sleep 3',
-              'echo "=== PROCESS STATUS ==="',
-              'ps -u qistflow27 -f | grep -E "run_daemon|worker.bundle.js"',
-              'echo "=== WORKER LOG OUTPUT ==="',
-              'tail -n 25 /home/qistflow27/qistflow-worker/worker.log'
-            ].join(' && ');
-
-            conn.exec(remoteCmd, (execErr, stream) => {
-              if (execErr) throw execErr;
-              stream.on('close', (code) => {
-                console.log('\nDeployment finished with code:', code);
-                conn.end();
-              }).on('data', d => process.stdout.write(d)).stderr.on('data', d => process.stderr.write(d));
-            });
+          conn.exec(remoteCmd, (execErr, stream) => {
+            if (execErr) throw execErr;
+            stream.on('close', (code) => {
+              console.log('\nDeployment finished with code:', code);
+              conn.end();
+            }).on('data', d => process.stdout.write(d)).stderr.on('data', d => process.stderr.write(d));
           });
-          startShStream.write(startSh);
-          startShStream.end();
         });
       });
     });
